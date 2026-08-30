@@ -14,6 +14,16 @@ export const ErrorCode = {
   WORKSPACE_NOT_EMPTY: 'WORKSPACE_NOT_EMPTY',
   PROJECT_NOT_FOUND: 'PROJECT_NOT_FOUND',
   PROJECT_FORBIDDEN: 'PROJECT_FORBIDDEN',
+  AGENT_NOT_FOUND: 'AGENT_NOT_FOUND',
+  AGENT_RUN_NOT_FOUND: 'AGENT_RUN_NOT_FOUND',
+  AGENT_INVALID_INPUT: 'AGENT_INVALID_INPUT',
+  AGENT_EXECUTION_FAILED: 'AGENT_EXECUTION_FAILED',
+  AGENT_TIMEOUT: 'AGENT_TIMEOUT',
+  MODEL_ERROR: 'MODEL_ERROR',
+  TOOL_ERROR: 'TOOL_ERROR',
+  AGENT_CANCELLED: 'AGENT_CANCELLED',
+  AGENT_FORBIDDEN: 'AGENT_FORBIDDEN',
+  AGENT_ASYNC_NOT_IMPLEMENTED: 'AGENT_ASYNC_NOT_IMPLEMENTED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -32,6 +42,16 @@ const statusByCode: Record<ErrorCodeValue, HttpStatus> = {
   WORKSPACE_NOT_EMPTY: HttpStatus.CONFLICT,
   PROJECT_NOT_FOUND: HttpStatus.NOT_FOUND,
   PROJECT_FORBIDDEN: HttpStatus.FORBIDDEN,
+  AGENT_NOT_FOUND: HttpStatus.NOT_FOUND,
+  AGENT_RUN_NOT_FOUND: HttpStatus.NOT_FOUND,
+  AGENT_INVALID_INPUT: HttpStatus.BAD_REQUEST,
+  AGENT_EXECUTION_FAILED: HttpStatus.INTERNAL_SERVER_ERROR,
+  AGENT_TIMEOUT: HttpStatus.GATEWAY_TIMEOUT,
+  MODEL_ERROR: HttpStatus.BAD_GATEWAY,
+  TOOL_ERROR: HttpStatus.BAD_GATEWAY,
+  AGENT_CANCELLED: HttpStatus.CONFLICT,
+  AGENT_FORBIDDEN: HttpStatus.FORBIDDEN,
+  AGENT_ASYNC_NOT_IMPLEMENTED: HttpStatus.NOT_IMPLEMENTED,
 };
 
 const messageByCode: Record<ErrorCodeValue, string> = {
@@ -48,6 +68,16 @@ const messageByCode: Record<ErrorCodeValue, string> = {
   WORKSPACE_NOT_EMPTY: 'Workspace still has projects',
   PROJECT_NOT_FOUND: 'Project not found',
   PROJECT_FORBIDDEN: 'Insufficient permission for project',
+  AGENT_NOT_FOUND: 'Agent not found',
+  AGENT_RUN_NOT_FOUND: 'Agent run not found',
+  AGENT_INVALID_INPUT: 'Agent input is invalid',
+  AGENT_EXECUTION_FAILED: 'Agent execution failed',
+  AGENT_TIMEOUT: 'Agent execution timed out',
+  MODEL_ERROR: 'Model provider error',
+  TOOL_ERROR: 'Agent tool error',
+  AGENT_CANCELLED: 'Agent run cancelled',
+  AGENT_FORBIDDEN: 'Insufficient permission for agent',
+  AGENT_ASYNC_NOT_IMPLEMENTED: 'Async agent execution is not available',
 };
 
 export class AppError extends HttpException {

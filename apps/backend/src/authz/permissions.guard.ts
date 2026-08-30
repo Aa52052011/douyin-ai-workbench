@@ -23,12 +23,18 @@ export class PermissionsGuard implements CanActivate {
       throw new AppError(ErrorCode.AUTH_UNAUTHORIZED);
     }
     if (!roleHasPermission(request.auth.role, permission)) {
-      throw new AppError(
-        permission.startsWith('workspace:')
-          ? ErrorCode.WORKSPACE_FORBIDDEN
-          : ErrorCode.PROJECT_FORBIDDEN,
-      );
+      throw new AppError(forbiddenCodeFor(permission));
     }
     return true;
   }
+}
+
+function forbiddenCodeFor(permission: PermissionValue) {
+  if (permission.startsWith('workspace:')) {
+    return ErrorCode.WORKSPACE_FORBIDDEN;
+  }
+  if (permission.startsWith('agent:')) {
+    return ErrorCode.AGENT_FORBIDDEN;
+  }
+  return ErrorCode.PROJECT_FORBIDDEN;
 }

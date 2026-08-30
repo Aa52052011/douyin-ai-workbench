@@ -19,11 +19,13 @@ npm run dev:backend
 
 默认地址：`http://localhost:3001`
 
-认证接口见 [auth-api.md](./auth-api.md)。Workspace / Project 见 [workspace-project.md](./workspace-project.md)。需要有效的 `DATABASE_URL` 与 `JWT_ACCESS_SECRET`（见仓库根 `.env.example`）。
+认证接口见 [auth-api.md](./auth-api.md)。Workspace / Project 见 [workspace-project.md](./workspace-project.md)。Agent Engine 见 [agent-engine.md](./agent-engine.md)。需要有效的 `DATABASE_URL` 与 `JWT_ACCESS_SECRET`（见仓库根 `.env.example`）。
+
+未配置 `AI_ENGINE_URL` 时，Backend 在进程内执行 `system.echo`（Mock）。不要为此安装 Redis 或真实模型 SDK。
 
 ## AI Engine
 
-需要 Python 3.11+（本机若未安装，仅保留源码骨架）。
+需要 Python 3.11+（本机若未安装，仅保留源码与协议，**不要强行安装 Python**）。
 
 ```bash
 cd apps/ai-engine

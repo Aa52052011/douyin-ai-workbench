@@ -17,7 +17,7 @@ Desktop (Tauri, 后续)
 
 - **frontend**：工作台 UI。V1.0 先以 Web 运行，后续由 Tauri 封装桌面端。
 - **backend**：业务 API、鉴权、任务投递。不直接跑模型推理。
-- **ai-engine**：全部 AI 能力的唯一执行入口，由 Agent 管理。
+- **ai-engine**：全部 AI 能力的唯一执行入口，由 Agent 管理。用户认证不在此层。内部调用使用 `AI_ENGINE_SECRET`。详见 [agent-engine.md](./agent-engine.md)。
 - **workers**：耗时任务（视频生成、分析等）异步消费。
 - **database**：PostgreSQL + Prisma。隔离根是 **Tenant**（`tenant_id`），不是 User。Workspace 及其下资源另有 `workspace_id`。User 表不挂 `tenant_id`。模型唯一来源：`database/prisma/schema.prisma`。详见 [auth-architecture.md](./auth-architecture.md)、[database-architecture.md](./database-architecture.md)。
 
@@ -52,4 +52,6 @@ Desktop (Tauri, 后续)
 
 已完成：Workspace / Project 基础管理。详见 [workspace-project.md](./workspace-project.md)。
 
-未做：Agent、视频、外部 API、队列消费。
+已完成：Agent Engine 基础设施（Definition 代码注册、AgentRun 入库、Mock Model/Tool、`system.echo`、Internal 协议）。详见 [agent-engine.md](./agent-engine.md)。
+
+未做：业务 Agent、真实 LLM、视频、外部 API、队列消费。

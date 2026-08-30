@@ -45,14 +45,15 @@ User (无 tenant_id)
             ▼
          Project (tenant_id + workspace_id，复合外键)
             │
-     ┌──────┼──────────┐
-     ▼      ▼          ▼
-ContentPlan Script    Video
+     ┌──────┼──────────┐────────┐
+     ▼      ▼          ▼        ▼
+ContentPlan Script    Video   AgentRun
      │      │          │
      └──────┘          ▼
    (可选关联)      Analytics (1 Video : N 快照)
 
 User 1:N RefreshToken   （只存 token_hash，级联删除）
+Agent Definition 不入库（代码注册）。AgentRun 入库。
 ```
 
 核心业务行同时带 `tenant_id` 与 `workspace_id`。  
@@ -74,12 +75,14 @@ User 1:N RefreshToken   （只存 token_hash，级联删除）
 | Video | 视频元数据（路径，非二进制） | `deletedAt` |
 | Analytics | 视频表现时间点快照 | 不删历史点 |
 | RefreshToken | 未来刷新令牌哈希 | 过期/撤销后硬删 |
+| AgentRun | 一次 Agent 执行记录 | 不软删（审计） |
 
 枚举：
 
 - `MembershipRole`：`OWNER` `ADMIN` `MEMBER` `EDITOR` `VIEWER`（V1.0 只用 OWNER）
 - `ContentPlanStatus` / `ScriptStatus`：`DRAFT` `GENERATING` `READY` `ARCHIVED`
 - `VideoStatus`：`PENDING` `PROCESSING` `COMPLETED` `FAILED`
+- `AgentRunStatus`：`PENDING` `RUNNING` `COMPLETED` `FAILED` `CANCELLED`
 
 ---
 
@@ -91,7 +94,7 @@ User 1:N RefreshToken   （只存 token_hash，级联删除）
 | refresh_tokens | **无**（按 user_id 检索） |
 | tenants | 自身即租户 |
 | memberships | 必填 |
-| workspaces / projects / content_plans / scripts / videos / analytics | 必填 |
+| workspaces / projects / content_plans / scripts / videos / analytics / agent_runs | 必填 |
 
 隔离硬墙只认 `tenant_id`。应用层查询必须带当前租户；跨租户对外 404。RLS 列已具备，策略 V2 再开。
 
@@ -103,7 +106,7 @@ User 1:N RefreshToken   （只存 token_hash，级联删除）
 | --- | --- |
 | users / tenants / memberships / refresh_tokens | 无 |
 | workspaces | 自身 |
-| projects / content_plans / scripts / videos / analytics | 必填 |
+| projects / content_plans / scripts / videos / analytics / agent_runs | 必填 |
 
 `Workspace.slug` 在 **租户内** 唯一（`@@unique([tenantId, slug])`），不是全局唯一。
 
@@ -140,8 +143,13 @@ User 1:N RefreshToken   （只存 token_hash，级联删除）
 | `refresh_tokens.token_hash` UNIQUE | 刷新时按哈希查找（永不存明文） |
 | `refresh_tokens (user_id)` | 登出/改密撤销该用户全部令牌 |
 | `refresh_tokens (expires_at)` | 过期清理任务 |
+| `agent_runs (tenant_id, created_at)` | 租户内 Run 时间线 |
+| `agent_runs (tenant_id, workspace_id, project_id)` | 项目下 Run 列表 |
+| `agent_runs (tenant_id, status)` | 租户内按状态监控 |
+| `agent_runs (agent_id, created_at)` | 按 Agent 排查 |
+| `agent_runs (id, tenant_id)` UNIQUE | 复合外键被引用端 / 租户内按 id 取 Run |
 
-不索引：`name`、`description`、`content`、计数指标、`user_agent` 等。
+不索引：`name`、`description`、`content`、计数指标、`user_agent`、JSONB 全文等。
 
 ---
 
@@ -193,6 +201,7 @@ id String @id @default(uuid(7)) @db.Uuid
 
 - 目录：`database/prisma/migrations/`
 - 第一份名称：`init_core_schema`
+- Agent 执行记录：`add_agent_runs`
 - 开发：`npm run db:migrate`（`prisma migrate dev`）
 - CI / 干净环境：`npm run db:migrate:deploy`
 - 回滚方式：Prisma 不以 down SQL 为一等公民。重建 = `DROP SCHEMA public CASCADE` + `migrate deploy`（测试已覆盖），或对开发库 `prisma migrate reset`

@@ -26,9 +26,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b px-6 py-3">
-        <Link href="/dashboard" className="font-semibold">
-          AI Content Factory
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard" className="font-semibold">
+            AI Content Factory
+          </Link>
+          <Link href="/dashboard/agents" className="text-sm underline">
+            Agent 测试
+          </Link>
+        </div>
         <div className="flex items-center gap-4 text-sm">
           <span>
             {session.user.name} · {session.user.email}

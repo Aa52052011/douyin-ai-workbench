@@ -84,6 +84,7 @@ describe("database schema", () => {
     expect(typeof prisma.video.create).toBe("function");
     expect(typeof prisma.analytics.create).toBe("function");
     expect(typeof prisma.refreshToken.create).toBe("function");
+    expect(typeof prisma.agentRun.create).toBe("function");
   });
 
   it("applies init_core_schema migration", async () => {
@@ -106,6 +107,7 @@ describe("database schema", () => {
         "videos",
         "analytics",
         "refresh_tokens",
+        "agent_runs",
         "_prisma_migrations",
       ]),
     );
@@ -290,5 +292,28 @@ describe("database schema", () => {
       orderBy: { recordedAt: "asc" },
     });
     expect(snapshots).toHaveLength(2);
+  });
+
+  it("stores agent runs against tenant + workspace + project", async () => {
+    const { tenant, workspace, project } = await seedTenantGraph(prisma);
+    const run = await prisma.agentRun.create({
+      data: {
+        tenantId: tenant.id,
+        workspaceId: workspace.id,
+        projectId: project.id,
+        agentId: "system.echo",
+        agentVersion: "v1",
+        status: "COMPLETED",
+        input: { message: "hello" },
+        output: { message: "hello", agent: "system.echo", version: "v1" },
+        requestId: randomUUID(),
+        inputTokens: 2,
+        outputTokens: 2,
+        totalTokens: 4,
+      },
+    });
+    expect(run.tenantId).toBe(tenant.id);
+    expect(run.projectId).toBe(project.id);
+    expect(run.agentId).toBe("system.echo");
   });
 });

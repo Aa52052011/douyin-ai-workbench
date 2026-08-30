@@ -5,6 +5,7 @@ export const Permission = {
   PROJECT_CREATE: 'project:create',
   PROJECT_UPDATE: 'project:update',
   PROJECT_DELETE: 'project:delete',
+  AGENT_EXECUTE: 'agent:execute',
 } as const;
 
 export type PermissionValue = (typeof Permission)[keyof typeof Permission];
@@ -19,9 +20,10 @@ const ROLE_PERMISSIONS: Record<string, readonly PermissionValue[]> = {
     Permission.PROJECT_CREATE,
     Permission.PROJECT_UPDATE,
     Permission.PROJECT_DELETE,
+    Permission.AGENT_EXECUTE,
   ],
   MEMBER: [],
-  EDITOR: [Permission.PROJECT_CREATE, Permission.PROJECT_UPDATE],
+  EDITOR: [Permission.PROJECT_CREATE, Permission.PROJECT_UPDATE, Permission.AGENT_EXECUTE],
   VIEWER: [],
 };
 

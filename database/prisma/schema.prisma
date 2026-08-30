@@ -39,6 +39,14 @@ enum VideoStatus {
   FAILED
 }
 
+enum AgentRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 /// 全局身份。不是隔离单元，禁止挂 tenant_id。
 model User {
   id           String    @id @default(uuid(7)) @db.Uuid
@@ -71,6 +79,7 @@ model Tenant {
   scripts      Script[]
   videos       Video[]
   analytics    Analytics[]
+  agentRuns    AgentRun[]
 
   @@map("tenants")
 }
@@ -108,6 +117,7 @@ model Workspace {
   scripts      Script[]
   videos       Video[]
   analytics    Analytics[]
+  agentRuns    AgentRun[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, slug])
@@ -134,6 +144,7 @@ model Project {
   scripts      Script[]
   videos       Video[]
   analytics    Analytics[]
+  agentRuns    AgentRun[]
 
   @@unique([id, tenantId])
   @@index([tenantId, workspaceId])
@@ -264,4 +275,38 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// 一次 Agent 执行记录。Definition 在代码注册，Run 入库。
+model AgentRun {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  projectId     String         @map("project_id") @db.Uuid
+  agentId       String         @map("agent_id")
+  agentVersion  String         @map("agent_version")
+  status        AgentRunStatus
+  input         Json
+  output        Json?
+  error         Json?
+  requestId     String         @map("request_id")
+  inputTokens   Int?           @map("input_tokens")
+  outputTokens  Int?           @map("output_tokens")
+  totalTokens   Int?           @map("total_tokens")
+  estimatedCost Decimal?       @map("estimated_cost") @db.Decimal(12, 6)
+  startedAt     DateTime?      @map("started_at")
+  completedAt   DateTime?      @map("completed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project   Project   @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, status])
+  @@index([agentId, createdAt])
+  @@map("agent_runs")
 }
