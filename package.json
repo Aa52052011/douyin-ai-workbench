@@ -1,0 +1,21 @@
+{
+  "name": "ai-content-factory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Content Factory — AI 抖音智能体工作台 monorepo",
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend",
+    "workers"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:backend": "npm run start:dev -w backend",
+    "build:frontend": "npm run build -w frontend",
+    "build:backend": "npm run build -w backend",
+    "lint:frontend": "npm run lint -w frontend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

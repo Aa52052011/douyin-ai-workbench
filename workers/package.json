@@ -1,0 +1,10 @@
+{
+  "name": "workers",
+  "version": "0.0.1",
+  "private": true,
+  "description": "异步任务 workers 占位包（BullMQ，初始化阶段不连接 Redis）",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json"
+  }
+}

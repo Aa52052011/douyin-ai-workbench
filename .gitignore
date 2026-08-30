@@ -1,0 +1,39 @@
+# dependencies
+node_modules
+
+# build / cache
+dist
+out
+.next
+.turbo
+.cache
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# python
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+
+# logs / os
+*.log
+.DS_Store
+Thumbs.db
+
+# ide
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# test / coverage
+coverage
+.nyc_output
