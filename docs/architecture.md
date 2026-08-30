@@ -48,4 +48,6 @@ Desktop (Tauri, 后续)
 
 已完成：目录与可运行骨架；用户/多租户架构设计；Prisma 核心 schema 与 `init_core_schema` migration。
 
-未做：认证实现、Agent、前端业务页、外部 API、队列消费。
+已完成：用户认证（注册 / 登录 / 刷新 / 退出 / 当前用户）。详见 [auth-implementation.md](./auth-implementation.md)。
+
+未做：Agent、Workspace 业务 UI、外部 API、队列消费。

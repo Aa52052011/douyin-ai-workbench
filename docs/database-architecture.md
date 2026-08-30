@@ -25,7 +25,7 @@ PostgreSQL 16          Docker Compose 服务名 postgres
 - 连接：`DATABASE_URL`（见 `.env.example`，真实密码不入库）
 - 官方本地启动：`docker compose up -d postgres`（PostgreSQL 16）
 - 本机若无 Docker：`npm run db:test` 会启动**嵌入式 PostgreSQL 16** 跑约束测试。这不是换引擎，只是测试夹具。开发与生产仍以 Docker / 托管 PostgreSQL 为准。
-- 本阶段不启用 RLS、不接 Redis、不写认证代码
+- 本阶段不启用 RLS、不接 Redis。认证逻辑在 `apps/backend`，本目录仍只负责 schema 与客户端。
 
 ---
 

@@ -19,6 +19,8 @@ npm run dev:backend
 
 默认地址：`http://localhost:3001`
 
+认证接口见 [auth-api.md](./auth-api.md)。需要有效的 `DATABASE_URL` 与 `JWT_ACCESS_SECRET`（见仓库根 `.env.example`）。
+
 ## AI Engine
 
 需要 Python 3.11+（本机若未安装，仅保留源码骨架）。

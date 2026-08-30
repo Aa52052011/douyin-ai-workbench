@@ -68,8 +68,12 @@ async function tryDockerCompose(): Promise<boolean> {
 async function startEmbeddedPostgres(): Promise<string> {
   const { default: EmbeddedPostgres } = await import("embedded-postgres");
   const port = 55432;
-  const databaseDir = path.join(os.tmpdir(), "acf-embedded-postgres");
-  rmSync(databaseDir, { recursive: true, force: true });
+  const databaseDir = path.join(os.tmpdir(), `acf-embedded-postgres-${process.pid}`);
+  try {
+    rmSync(databaseDir, { recursive: true, force: true });
+  } catch {
+    // Windows may lock leftover files from a previous crash; initdb uses a fresh dir name via pid.
+  }
   const instance = new EmbeddedPostgres({
     databaseDir,
     user: "acf",
@@ -146,7 +150,11 @@ export async function stopTestDatabase(): Promise<void> {
     prisma = undefined;
   }
   if (embedded) {
-    await embedded.stop();
+    try {
+      await embedded.stop();
+    } catch {
+      // Windows: data directory can stay locked after postgres exits.
+    }
     embedded = undefined;
   }
 }

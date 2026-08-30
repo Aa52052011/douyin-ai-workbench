@@ -1,11 +1,10 @@
 # backend
 
-NestJS + TypeScript API 骨架。
-
-初始化阶段仅提供 `GET /health`，不连接数据库，不调用外部 API。
+NestJS API。V1.0 已实现认证，未实现 Agent / 视频业务。
 
 ```bash
+# 需 PostgreSQL 与 JWT_ACCESS_SECRET，见仓库根 .env.example
 npm run dev:backend
 ```
 
-默认端口：`3001`
+认证契约：[docs/auth-api.md](../../docs/auth-api.md)

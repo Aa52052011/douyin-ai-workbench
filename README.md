@@ -20,9 +20,13 @@ docs/             架构与开发文档
 
 ```bash
 npm install
+npm run db:up
+npm run db:migrate:deploy
 npm run dev:frontend
 npm run dev:backend
 ```
+
+前端：`/login`、`/register`。认证说明见 [docs/auth-implementation.md](./docs/auth-implementation.md)。
 
 数据库：
 
