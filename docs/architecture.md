@@ -50,4 +50,6 @@ Desktop (Tauri, 后续)
 
 已完成：用户认证（注册 / 登录 / 刷新 / 退出 / 当前用户）。详见 [auth-implementation.md](./auth-implementation.md)。
 
-未做：Agent、Workspace 业务 UI、外部 API、队列消费。
+已完成：Workspace / Project 基础管理。详见 [workspace-project.md](./workspace-project.md)。
+
+未做：Agent、视频、外部 API、队列消费。

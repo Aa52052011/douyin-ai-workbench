@@ -8,6 +8,12 @@ export const ErrorCode = {
   AUTH_REFRESH_INVALID: 'AUTH_REFRESH_INVALID',
   AUTH_EMAIL_EXISTS: 'AUTH_EMAIL_EXISTS',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  WORKSPACE_NOT_FOUND: 'WORKSPACE_NOT_FOUND',
+  WORKSPACE_FORBIDDEN: 'WORKSPACE_FORBIDDEN',
+  WORKSPACE_DEFAULT_CANNOT_DELETE: 'WORKSPACE_DEFAULT_CANNOT_DELETE',
+  WORKSPACE_NOT_EMPTY: 'WORKSPACE_NOT_EMPTY',
+  PROJECT_NOT_FOUND: 'PROJECT_NOT_FOUND',
+  PROJECT_FORBIDDEN: 'PROJECT_FORBIDDEN',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -20,6 +26,12 @@ const statusByCode: Record<ErrorCodeValue, HttpStatus> = {
   AUTH_REFRESH_INVALID: HttpStatus.UNAUTHORIZED,
   AUTH_EMAIL_EXISTS: HttpStatus.CONFLICT,
   VALIDATION_ERROR: HttpStatus.BAD_REQUEST,
+  WORKSPACE_NOT_FOUND: HttpStatus.NOT_FOUND,
+  WORKSPACE_FORBIDDEN: HttpStatus.FORBIDDEN,
+  WORKSPACE_DEFAULT_CANNOT_DELETE: HttpStatus.CONFLICT,
+  WORKSPACE_NOT_EMPTY: HttpStatus.CONFLICT,
+  PROJECT_NOT_FOUND: HttpStatus.NOT_FOUND,
+  PROJECT_FORBIDDEN: HttpStatus.FORBIDDEN,
 };
 
 const messageByCode: Record<ErrorCodeValue, string> = {
@@ -30,6 +42,12 @@ const messageByCode: Record<ErrorCodeValue, string> = {
   AUTH_REFRESH_INVALID: 'Refresh token invalid',
   AUTH_EMAIL_EXISTS: 'Email already registered',
   VALIDATION_ERROR: 'Validation failed',
+  WORKSPACE_NOT_FOUND: 'Workspace not found',
+  WORKSPACE_FORBIDDEN: 'Insufficient permission for workspace',
+  WORKSPACE_DEFAULT_CANNOT_DELETE: 'Default workspace cannot be deleted',
+  WORKSPACE_NOT_EMPTY: 'Workspace still has projects',
+  PROJECT_NOT_FOUND: 'Project not found',
+  PROJECT_FORBIDDEN: 'Insufficient permission for project',
 };
 
 export class AppError extends HttpException {

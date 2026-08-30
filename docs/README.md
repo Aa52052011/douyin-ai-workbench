@@ -9,6 +9,7 @@
 | [database-architecture.md](./database-architecture.md) | Prisma / PostgreSQL 模型、索引与删除策略 |
 | [auth-implementation.md](./auth-implementation.md) | V1.0 认证实现与安全说明 |
 | [auth-api.md](./auth-api.md) | 认证 HTTP 契约 |
+| [workspace-project.md](./workspace-project.md) | Workspace / Project 与租户隔离 |
 | [development.md](./development.md) | 本地启动说明 |
 
 业务模块在对应设计文档评审通过后再实现。

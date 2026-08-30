@@ -20,7 +20,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       await register({ name, email, password });
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
     } finally {
