@@ -31,6 +31,25 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Workers / Database
+## Database
 
-初始化阶段不启动。不连接 Redis，不连接 PostgreSQL。
+官方方式：Docker Compose 启动 PostgreSQL 16。
+
+```bash
+npm run db:up
+copy database\.env.example database\.env
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:test
+```
+
+- 开发库：`postgresql://acf:acf@localhost:5432/acf_dev`
+- 测试库：`postgresql://acf:acf@localhost:5432/acf_test`（`database/docker/init.sql` 创建）
+- 不要提交 `database/.env` 或真实密码
+
+本机若无 Docker：不要改成 SQLite。安装 Docker Desktop，或自行提供 PostgreSQL 16 并设置 `DATABASE_URL`。  
+`npm run db:test` 在检测不到 5432 时会启动嵌入式 PostgreSQL 16（仅测试用）。
+
+## Workers
+
+尚未启动。不连接 Redis。

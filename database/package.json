@@ -1,0 +1,30 @@
+{
+  "name": "database",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Prisma schema 与 PostgreSQL 客户端（无业务逻辑）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate --schema prisma/schema.prisma",
+    "migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "migrate:reset": "prisma migrate reset --schema prisma/schema.prisma --force --skip-seed",
+    "migrate:diff": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script",
+    "studio": "prisma studio --schema prisma/schema.prisma",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "embedded-postgres": "16.14.0-beta.17",
+    "prisma": "^6.19.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

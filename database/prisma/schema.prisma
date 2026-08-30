@@ -1,0 +1,267 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ID：PostgreSQL native UUID，默认 UUID v7（时间有序，利于 B-tree 与分布式写入）。
+// 业务表映射为 snake_case，便于 SQL、未来 RLS 与 Python 服务共用。
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  EDITOR
+  VIEWER
+}
+
+enum ContentPlanStatus {
+  DRAFT
+  GENERATING
+  READY
+  ARCHIVED
+}
+
+enum ScriptStatus {
+  DRAFT
+  GENERATING
+  READY
+  ARCHIVED
+}
+
+enum VideoStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+/// 全局身份。不是隔离单元，禁止挂 tenant_id。
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// 数据隔离根与未来计费根。
+model Tenant {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  memberships  Membership[]
+  workspaces   Workspace[]
+  projects     Project[]
+  contentPlans ContentPlan[]
+  scripts      Script[]
+  videos       Video[]
+  analytics    Analytics[]
+
+  @@map("tenants")
+}
+
+/// User ↔ Tenant。同一用户不能重复加入同一租户。
+model Membership {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  role      MembershipRole @default(OWNER)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("memberships")
+}
+
+/// 协作空间。必须属于 Tenant。slug 在租户内唯一。
+model Workspace {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  name      String
+  slug      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  projects     Project[]
+  contentPlans ContentPlan[]
+  scripts      Script[]
+  videos       Video[]
+  analytics    Analytics[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("workspaces")
+}
+
+/// 业务项目。同时冗余 tenantId 与 workspaceId，并用复合外键防止串租。
+model Project {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  name        String
+  industry    String?
+  platform    String?
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace    Workspace     @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  contentPlans ContentPlan[]
+  scripts      Script[]
+  videos       Video[]
+  analytics    Analytics[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, workspaceId])
+  @@index([tenantId, createdAt])
+  @@map("projects")
+}
+
+/// 内容规划。属于 Tenant + Workspace + Project。
+model ContentPlan {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  workspaceId String            @map("workspace_id") @db.Uuid
+  projectId   String            @map("project_id") @db.Uuid
+  title       String
+  description String?
+  status      ContentPlanStatus @default(DRAFT)
+  startDate   DateTime?         @map("start_date") @db.Date
+  endDate     DateTime?         @map("end_date") @db.Date
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  deletedAt   DateTime?         @map("deleted_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project   Project   @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  scripts   Script[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, status])
+  @@map("content_plans")
+}
+
+/// 脚本。可挂 ContentPlan；同一计划允许多个版本。
+model Script {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  workspaceId   String       @map("workspace_id") @db.Uuid
+  projectId     String       @map("project_id") @db.Uuid
+  contentPlanId String?      @map("content_plan_id") @db.Uuid
+  title         String
+  content       String       @default("")
+  version       Int          @default(1)
+  status        ScriptStatus @default(DRAFT)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  deletedAt     DateTime?    @map("deleted_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace   Workspace    @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project     Project      @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  contentPlan ContentPlan? @relation(fields: [contentPlanId], references: [id], onDelete: Restrict)
+  videos      Video[]
+
+  @@index([tenantId, workspaceId, projectId])
+  @@index([contentPlanId, version])
+  @@index([tenantId, status])
+  @@map("scripts")
+}
+
+/// 视频元数据。只存路径 / storage key，不存二进制。
+model Video {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  workspaceId String      @map("workspace_id") @db.Uuid
+  projectId   String      @map("project_id") @db.Uuid
+  scriptId    String?     @map("script_id") @db.Uuid
+  filePath    String?     @map("file_path")
+  duration    Int?
+  width       Int?
+  height      Int?
+  status      VideoStatus @default(PENDING)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  deletedAt   DateTime?   @map("deleted_at")
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project   Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  script    Script?     @relation(fields: [scriptId], references: [id], onDelete: Restrict)
+  analytics Analytics[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([scriptId])
+  @@index([tenantId, status])
+  @@map("videos")
+}
+
+/// 视频表现快照。同一 Video 可有多条时间点记录。
+model Analytics {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  videoId          String   @map("video_id") @db.Uuid
+  views            Int      @default(0)
+  likes            Int      @default(0)
+  comments         Int      @default(0)
+  shares           Int      @default(0)
+  followersGained  Int      @default(0) @map("followers_gained")
+  recordedAt       DateTime @map("recorded_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project   Project   @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  video     Video     @relation(fields: [videoId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([videoId, recordedAt])
+  @@index([tenantId, recordedAt])
+  @@map("analytics")
+}
+
+/// 未来认证用的 Refresh Token。只存哈希，禁止存明文。本阶段无认证逻辑。
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}

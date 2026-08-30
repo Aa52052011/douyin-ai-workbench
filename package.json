@@ -6,6 +6,7 @@
   "workspaces": [
     "apps/frontend",
     "apps/backend",
+    "database",
     "workers"
   ],
   "scripts": {
@@ -13,7 +14,13 @@
     "dev:backend": "npm run start:dev -w backend",
     "build:frontend": "npm run build -w frontend",
     "build:backend": "npm run build -w backend",
-    "lint:frontend": "npm run lint -w frontend"
+    "lint:frontend": "npm run lint -w frontend",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "npm run generate -w database",
+    "db:migrate": "npm run migrate:dev -w database",
+    "db:migrate:deploy": "npm run migrate:deploy -w database",
+    "db:test": "npm test -w database"
   },
   "engines": {
     "node": ">=20"

@@ -19,7 +19,7 @@ Desktop (Tauri, 后续)
 - **backend**：业务 API、鉴权、任务投递。不直接跑模型推理。
 - **ai-engine**：全部 AI 能力的唯一执行入口，由 Agent 管理。
 - **workers**：耗时任务（视频生成、分析等）异步消费。
-- **database**：PostgreSQL + Prisma。隔离根是 **Tenant**（`tenant_id`），不是 User。Workspace 及其下资源另有 `workspace_id`。User 表不挂 `tenant_id`。详见 [auth-architecture.md](./auth-architecture.md)。
+- **database**：PostgreSQL + Prisma。隔离根是 **Tenant**（`tenant_id`），不是 User。Workspace 及其下资源另有 `workspace_id`。User 表不挂 `tenant_id`。模型唯一来源：`database/prisma/schema.prisma`。详见 [auth-architecture.md](./auth-architecture.md)、[database-architecture.md](./database-architecture.md)。
 
 ## Monorepo 约定
 
@@ -46,6 +46,6 @@ Desktop (Tauri, 后续)
 
 ## 本阶段边界
 
-已完成：目录与可运行骨架；用户/多租户架构设计文档。
+已完成：目录与可运行骨架；用户/多租户架构设计；Prisma 核心 schema 与 `init_core_schema` migration。
 
-未做：业务模块、认证实现、Agent、数据库连接、外部 API 调用、队列消费。
+未做：认证实现、Agent、前端业务页、外部 API、队列消费。

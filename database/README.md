@@ -1,10 +1,21 @@
 # database
 
-数据库与 Prisma 资源目录。
+Prisma + PostgreSQL。模型唯一来源：`prisma/schema.prisma`。
 
-规划：
+本目录只放结构、migration 与客户端，不放认证或业务规则。
 
-- `prisma/schema.prisma`：数据模型（所有业务表预留 `tenant_id`）
-- `prisma/migrations/`：迁移文件
+## 启动
 
-当前初始化阶段不创建 schema、不配置数据源、不连接 PostgreSQL。
+```bash
+docker compose up -d postgres
+copy database\.env.example database\.env
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:test
+```
+
+默认连接（仅本地示例，非生产密钥）：
+
+`postgresql://acf:acf@localhost:5432/acf_dev?schema=public`
+
+架构说明见 [docs/database-architecture.md](../docs/database-architecture.md)。

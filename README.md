@@ -24,7 +24,15 @@ npm run dev:frontend
 npm run dev:backend
 ```
 
-AI Engine 与数据库、队列在后续阶段接入。详见 [docs/development.md](./docs/development.md)。
+数据库：
+
+```bash
+npm run db:up
+npm run db:migrate:deploy
+```
+
+详见 [docs/development.md](./docs/development.md) 与 [docs/database-architecture.md](./docs/database-architecture.md)。
+
 
 ## 开发原则
 
