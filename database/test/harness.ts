@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
@@ -65,10 +66,19 @@ async function tryDockerCompose(): Promise<boolean> {
   return false;
 }
 
+async function pickEmbeddedPort(start = 55432): Promise<number> {
+  for (let port = start; port < start + 20; port += 1) {
+    if (!(await canConnect("127.0.0.1", port))) {
+      return port;
+    }
+  }
+  throw new Error("No free port for embedded PostgreSQL");
+}
+
 async function startEmbeddedPostgres(): Promise<string> {
   const { default: EmbeddedPostgres } = await import("embedded-postgres");
-  const port = 55432;
-  const databaseDir = path.join(os.tmpdir(), `acf-embedded-postgres-${process.pid}`);
+  const port = await pickEmbeddedPort();
+  const databaseDir = path.join(os.tmpdir(), `acf-embedded-postgres-${process.pid}-${randomUUID().slice(0, 8)}`);
   try {
     rmSync(databaseDir, { recursive: true, force: true });
   } catch {
@@ -115,7 +125,15 @@ export async function startTestDatabase(): Promise<string> {
 }
 
 export function generateClient(): void {
-  runPrisma(["generate"], DEV_DATABASE_URL);
+  try {
+    runPrisma(["generate"], DEV_DATABASE_URL);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("EPERM") && message.includes("query_engine")) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export function migrateDeploy(databaseUrl: string): void {

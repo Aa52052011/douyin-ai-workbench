@@ -23,8 +23,9 @@ PostgreSQL 16          Docker Compose 服务名 postgres
 - 引擎：PostgreSQL 16
 - ORM：Prisma（schema 即结构真相）
 - 连接：`DATABASE_URL`（见 `.env.example`，真实密码不入库）
-- 官方本地启动：`docker compose up -d postgres`（PostgreSQL 16）
-- 本机若无 Docker：`npm run db:test` 会启动**嵌入式 PostgreSQL 16** 跑约束测试。这不是换引擎，只是测试夹具。开发与生产仍以 Docker / 托管 PostgreSQL 为准。
+- 官方本地启动（Docker 可用）：`docker compose up -d postgres`（PostgreSQL 16，端口 5432）
+- Windows 无 Docker：`npm run db:local:start`（PostgreSQL 16.14 持久 cluster，`127.0.0.1:55432/acf_dev`）。数据目录 `.local/postgres/data`，不入库。
+- 本机若无 Docker：`npm run db:test` 会启动**临时**嵌入式 PostgreSQL 16 跑约束测试。这不是换引擎，只是测试夹具，不要当作 `acf_dev`。
 - 本阶段不启用 RLS、不接 Redis。认证逻辑在 `apps/backend`，本目录仍只负责 schema 与客户端。
 
 ---
@@ -45,12 +46,16 @@ User (无 tenant_id)
             ▼
          Project (tenant_id + workspace_id，复合外键)
             │
-     ┌──────┼──────────┐────────┐
-     ▼      ▼          ▼        ▼
-ContentPlan Script    Video   AgentRun
-     │      │          │
-     └──────┘          ▼
-   (可选关联)      Analytics (1 Video : N 快照)
+     ┌──────┼──────────┐────────┐────────┐
+     ▼      ▼          ▼        ▼        ▼
+ContentPlan Script    Video   AgentRun  Asset
+     │      │          │                  │
+     └──────┘          │                  │
+   (可选关联)          ├── Job            │
+                       └── AssetLink ─────┘
+                       Analytics (DEPRECATED Video 级；禁止新写入)
+                       Publication (1 Video : N 外部作品)
+                         └── PublicationMetricSnapshot (新 SoT)
 
 User 1:N RefreshToken   （只存 token_hash，级联删除）
 Agent Definition 不入库（代码注册）。AgentRun 入库。
@@ -70,18 +75,37 @@ Agent Definition 不入库（代码注册）。AgentRun 入库。
 | Membership | 用户加入租户及角色 | 硬删（解除关系） |
 | Workspace | 协作空间 | `deletedAt` |
 | Project | 账号/选题项目 | `deletedAt` |
-| ContentPlan | 内容规划 | `deletedAt` |
-| Script | 脚本及版本 | `deletedAt` |
-| Video | 视频元数据（路径，非二进制） | `deletedAt` |
-| Analytics | 视频表现时间点快照 | 不删历史点 |
+| ContentPlan | 内容规划（JSONB payload + 定位快照 + 版本） | `deletedAt` |
+| Script | 脚本（JSONB payload + Topic 快照 + 版本） | `deletedAt` |
+| Asset | 统一文件元数据（对象在 StorageProvider） | `deletedAt` |
+| AssetLink | Video/Job 与 Asset 的角色关系 | 硬删链接 |
+| Job | 耗时媒体任务（与 AgentRun 分离） | 无软删 |
+| Video | 成片业务对象（outputAssetId，不存二进制）。与 Job COMPLETED、VIDEO_OUTPUT 在 Finalize 同事务提交 | `deletedAt` |
+| PlatformAccount | Workspace 级外部平台账号。只存 credentialRef | `deletedAt` |
+| PlatformSecret | AES-GCM 密文凭据。无明文 token 列 | `revokedAt` |
+| Publication | 一次对外发布记录。不是 Video，也不是 Job | 不软删（审计） |
+| PublicationMetricSnapshot | Publication 在 observedAt 的表现快照（新 Metrics SoT） | append-mostly，不软删 |
+| Analytics | **DEPRECATED / NO NEW WRITES**。旧 Video 级快照。不要补 publicationId | 不删历史点；不迁数据 |
 | RefreshToken | 未来刷新令牌哈希 | 过期/撤销后硬删 |
 | AgentRun | 一次 Agent 执行记录 | 不软删（审计） |
 
 枚举：
 
 - `MembershipRole`：`OWNER` `ADMIN` `MEMBER` `EDITOR` `VIEWER`（V1.0 只用 OWNER）
-- `ContentPlanStatus` / `ScriptStatus`：`DRAFT` `GENERATING` `READY` `ARCHIVED`
-- `VideoStatus`：`PENDING` `PROCESSING` `COMPLETED` `FAILED`
+- `ContentPlanStatus`：`DRAFT` `GENERATING` `READY` `CONFIRMED` `ARCHIVED`（业务只用 DRAFT / CONFIRMED / ARCHIVED）
+- `ScriptStatus`：`DRAFT` `GENERATING` `READY` `CONFIRMED` `ARCHIVED`（业务只用 DRAFT / CONFIRMED / ARCHIVED）
+- `VideoStatus`：`PENDING` `PROCESSING` `COMPLETED` `FAILED`（成片业务态；执行进度看 Job）
+- `AssetType`：`IMAGE` `VIDEO` `AUDIO` `SUBTITLE` `DOCUMENT` `SOURCE_VIDEO` `SOURCE_AUDIO` `OTHER`
+- `AssetStatus`：`PENDING` `PROCESSING` `READY` `FAILED`（软删用 `deletedAt`，无 `DELETED`）
+- `AssetLinkRole`：`VIDEO_*` / `MOVIE_*`（见 schema）
+- `JobKind`：`VIDEO_GENERATION` `MOVIE_EDITING` `TTS_GENERATION` `SUBTITLE_GENERATION` `VIDEO_COMPOSE` `VIDEO_PUBLISH` `PUBLICATION_METRICS_SYNC`
+- `JobStatus`：`PENDING` `RUNNING` `COMPLETED` `FAILED` `CANCELLED`（无 `RETRYING`）
+- `Platform`：`DOUYIN` `TIKTOK` `YOUTUBE` `XIAOHONGSHU` `BILIBILI` `CHANNELS` `MOCK`
+- `PlatformAccountStatus`：`ACTIVE` `EXPIRED` `REVOKED` `DISCONNECTED`
+- `PublicationMode`：`API` `MANUAL`
+- `PublicationStatus`：`PENDING` `UPLOADING` `SUBMITTING` `PROCESSING` `PUBLISHED` `FAILED` `UNKNOWN_EXTERNAL_STATE` `CANCELLED`（无 `DRAFT`）
+- `MetricSource`：`API` `MANUAL` `IMPORT`（无 `SCRAPE` / `MOCK` source）
+- `SecretKind`：`PLATFORM_OAUTH`
 - `AgentRunStatus`：`PENDING` `RUNNING` `COMPLETED` `FAILED` `CANCELLED`
 
 ---
@@ -94,7 +118,7 @@ Agent Definition 不入库（代码注册）。AgentRun 入库。
 | refresh_tokens | **无**（按 user_id 检索） |
 | tenants | 自身即租户 |
 | memberships | 必填 |
-| workspaces / projects / content_plans / scripts / videos / analytics / agent_runs | 必填 |
+| workspaces / projects / content_plans / scripts / videos / analytics / agent_runs / assets / asset_links / jobs / platform_accounts / platform_secrets / publications / publication_metric_snapshots | 必填 |
 
 隔离硬墙只认 `tenant_id`。应用层查询必须带当前租户；跨租户对外 404。RLS 列已具备，策略 V2 再开。
 
@@ -106,7 +130,7 @@ Agent Definition 不入库（代码注册）。AgentRun 入库。
 | --- | --- |
 | users / tenants / memberships / refresh_tokens | 无 |
 | workspaces | 自身 |
-| projects / content_plans / scripts / videos / analytics / agent_runs | 必填 |
+| projects / content_plans / scripts / videos / analytics / agent_runs / assets / asset_links / jobs / platform_accounts / platform_secrets / publications / publication_metric_snapshots | 必填 |
 
 `Workspace.slug` 在 **租户内** 唯一（`@@unique([tenantId, slug])`），不是全局唯一。
 
@@ -131,15 +155,29 @@ Agent Definition 不入库（代码注册）。AgentRun 入库。
 | `projects (tenant_id, created_at)` | 租户内按时间分页 |
 | `projects (id, tenant_id)` UNIQUE | 被 ContentPlan / Script 等复合引用 |
 | `content_plans (tenant_id, workspace_id, project_id)` | 项目下规划列表 |
+| `content_plans (tenant_id, project_id, version)` UNIQUE | 同项目版本不覆盖 |
 | `content_plans (tenant_id, status)` | 租户内按状态筛选 |
 | `scripts (tenant_id, workspace_id, project_id)` | 项目下脚本 |
-| `scripts (content_plan_id, version)` | 同一规划的多版本 |
+| `scripts (tenant_id, content_plan_id, topic_id, version)` UNIQUE | 同 Topic 版本不覆盖 |
 | `scripts (tenant_id, status)` | 按状态取脚本 |
 | `videos (tenant_id, workspace_id, project_id)` | 项目下视频 |
 | `videos (script_id)` | 由脚本反查成片 |
 | `videos (tenant_id, status)` | 处理中/失败监控 |
-| `analytics (video_id, recorded_at)` | 一条视频的时间序列 |
-| `analytics (tenant_id, recorded_at)` | 租户复盘时间窗 |
+| `assets (tenant_id, workspace_id, project_id)` | 项目下素材列表 |
+| `assets.storage_key` UNIQUE | 对象存储键不冲突 |
+| `asset_links (asset_id)` / `(video_id)` / `(job_id)` | 按对象查链接 |
+| `asset_links (tenant_id, video_id) WHERE role=VIDEO_OUTPUT` 部分唯一 | 每个 Video 至多一条成片输出 |
+| `jobs (tenant_id, workspace_id, project_id)` | 项目下任务 |
+| `jobs (tenant_id, status)` | 任务监控 |
+| `jobs (video_id)` | 成片关联任务 |
+| `jobs.locked_at` / `last_heartbeat_at` / `attempt` | Worker lease / crash recovery |
+| `analytics (video_id, recorded_at)` | **legacy** 一条视频的时间序列。禁止新业务写入 |
+| `analytics (tenant_id, recorded_at)` | **legacy** 租户复盘时间窗 |
+| `publication_metric_snapshots (id, tenant_id)` UNIQUE | 租户内按 id 取快照 |
+| `publication_metric_snapshots (tenant_id, publication_id, source, collection_key)` UNIQUE | 同一次采集幂等 |
+| `publication_metric_snapshots (tenant_id, publication_id, observed_at)` | 一条作品的时间序列 |
+| `publication_metric_snapshots (tenant_id, workspace_id, project_id, observed_at)` | 项目复盘时间窗 |
+| `publication_metric_snapshots (tenant_id, platform, observed_at)` | 按平台复盘 |
 | `refresh_tokens.token_hash` UNIQUE | 刷新时按哈希查找（永不存明文） |
 | `refresh_tokens (user_id)` | 登出/改密撤销该用户全部令牌 |
 | `refresh_tokens (expires_at)` | 过期清理任务 |
@@ -189,9 +227,13 @@ id String @id @default(uuid(7)) @db.Uuid
 | ContentPlan | Restrict 仍挂着的 Script；`deletedAt` | 软删规划，脚本保留 |
 | Script | Restrict 仍挂着的 Video；`deletedAt` | 软删脚本，视频元数据保留 |
 | Video | Restrict Analytics；`deletedAt` | 软删视频行，对象存储另议 |
+| Asset | `deletedAt` | 软删元数据；对象由 StorageProvider 删除 |
+| AssetLink | 硬删 | 关系解除 |
+| Job | 不软删 | 审计/重试历史 |
 | Membership | 硬删一行 | 用户离开租户 |
 | RefreshToken | 用户硬删时 CASCADE；平时硬删过期行 | 无软删 |
-| Analytics | 不随视频 CASCADE | 快照保留到视频行还在 |
+| Analytics | 不随视频 CASCADE | **冻结**。快照保留到视频行还在。不要迁到 PublicationMetricSnapshot |
+| PublicationMetricSnapshot | Restrict Publication / Tenant / Workspace / Project | 不随 Publication CASCADE |
 
 软删后邮箱 / slug 仍受 UNIQUE 约束（占用），避免「删号立刻抢注」。V2 如需回收，再上部分唯一索引。
 
@@ -202,6 +244,12 @@ id String @id @default(uuid(7)) @db.Uuid
 - 目录：`database/prisma/migrations/`
 - 第一份名称：`init_core_schema`
 - Agent 执行记录：`add_agent_runs`
+- ContentPlan 版本化：`add_content_plan_versioning`（`version` / `payload` / `positioning_snapshot` / `source_agent_run_id` / `CONFIRMED`）
+- Script 版本化：`add_script_topic_versioning`（`topic_id` / `payload` / `topic_snapshot` / `source_agent_run_id` / `CONFIRMED`）
+- Media Asset / Job / Video 扩展：`add_media_asset_job_video`（`assets` / `asset_links` / `jobs` / `videos.output_asset_id` / `videos.source_job_id`）
+- Job Worker lease：`add_job_worker_lease`（`jobs.locked_at` / `last_heartbeat_at` / `attempt`，旧行默认 `attempt=0`、时间戳为空）
+- Publishing 基础：`add_publishing_foundation`（`platform_accounts` / `platform_secrets` / `publications` / `JobKind.VIDEO_PUBLISH`）
+- Publication Metrics 地基：`add_publication_metrics_foundation`（`MetricSource` / `publication_metric_snapshots` / `JobKind.PUBLICATION_METRICS_SYNC`）。**不** DROP / rename Analytics。
 - 开发：`npm run db:migrate`（`prisma migrate dev`）
 - CI / 干净环境：`npm run db:migrate:deploy`
 - 回滚方式：Prisma 不以 down SQL 为一等公民。重建 = `DROP SCHEMA public CASCADE` + `migrate deploy`（测试已覆盖），或对开发库 `prisma migrate reset`

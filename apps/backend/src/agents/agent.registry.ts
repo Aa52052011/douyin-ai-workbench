@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ErrorCode } from '../common/errors/app-error.js';
+import { accountPositioningDefinition } from './definitions/account-positioning.agent.js';
+import { campaignStrategyDefinition } from './definitions/campaign-strategy.agent.js';
+import { contentPlanningDefinition } from './definitions/content-planning.agent.js';
+import { marketIntelligenceDefinition } from './definitions/market-intelligence.agent.js';
+import { scriptGenerationDefinition } from './definitions/script-generation.agent.js';
 import { systemEchoDefinition } from './definitions/system-echo.agent.js';
 import { AgentError } from './agent.errors.js';
 import type { AgentDefinition } from './agent.types.js';
@@ -10,6 +15,11 @@ export class AgentRegistry {
 
   constructor() {
     this.register(systemEchoDefinition);
+    this.register(accountPositioningDefinition);
+    this.register(contentPlanningDefinition);
+    this.register(scriptGenerationDefinition);
+    this.register(marketIntelligenceDefinition);
+    this.register(campaignStrategyDefinition);
   }
 
   register(definition: AgentDefinition): void {

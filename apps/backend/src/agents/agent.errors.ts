@@ -3,6 +3,8 @@ import { AppError, ErrorCode, type ErrorCodeValue } from '../common/errors/app-e
 const RETRYABLE_CODES = new Set<ErrorCodeValue>([
   ErrorCode.AGENT_TIMEOUT,
   ErrorCode.MODEL_ERROR,
+  ErrorCode.MODEL_REQUEST_FAILED,
+  ErrorCode.MODEL_TIMEOUT,
   ErrorCode.AGENT_EXECUTION_FAILED,
 ]);
 
@@ -10,10 +12,21 @@ const NON_RETRYABLE_CODES = new Set<ErrorCodeValue>([
   ErrorCode.AGENT_NOT_FOUND,
   ErrorCode.AGENT_RUN_NOT_FOUND,
   ErrorCode.AGENT_INVALID_INPUT,
+  ErrorCode.AGENT_INVALID_OUTPUT,
   ErrorCode.AGENT_CANCELLED,
   ErrorCode.AGENT_FORBIDDEN,
   ErrorCode.TOOL_ERROR,
   ErrorCode.AGENT_ASYNC_NOT_IMPLEMENTED,
+  ErrorCode.MODEL_PROVIDER_NOT_CONFIGURED,
+  ErrorCode.CONTENT_PLAN_DAYS_NOT_AVAILABLE,
+  ErrorCode.CONTENT_PLAN_NOT_FOUND,
+  ErrorCode.CONTENT_PLAN_CONFLICT,
+  ErrorCode.CONTENT_PLAN_POSITIONING_REQUIRED,
+  ErrorCode.SCRIPT_NOT_FOUND,
+  ErrorCode.SCRIPT_TOPIC_NOT_FOUND,
+  ErrorCode.SCRIPT_PLAN_NOT_CONFIRMED,
+  ErrorCode.SCRIPT_DURATION_NOT_AVAILABLE,
+  ErrorCode.SCRIPT_CONFLICT,
 ]);
 
 const NETWORK_RE = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|fetch failed|socket hang up/i;

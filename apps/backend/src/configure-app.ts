@@ -13,7 +13,10 @@ export function configureApp(app: INestApplication): void {
   );
   app.useGlobalFilters(new AppExceptionFilter());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    origin:
+      process.env.NODE_ENV === 'production'
+        ? process.env.CORS_ORIGIN
+        : (process.env.CORS_ORIGIN ?? 'http://localhost:3000'),
     credentials: true,
   });
 }

@@ -1,100 +1,96 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useAuth } from "../../lib/auth-context";
+import { CreateProjectForm } from "../../components/create-project-form";
+import { EmptyState } from "../../components/empty-state";
+import { PageHeader } from "../../components/page-header";
+import { ProjectCard } from "../../components/project-card";
 import { api } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
+import { loadProjectStatus } from "../../lib/load-project-status";
+import type { ProjectNextAction, ProjectStageMap } from "../../lib/project-next-action";
 import type { Project } from "../../lib/types";
+
+const RECENT_LIMIT = 5;
+
+type RecentCard = {
+  project: Project;
+  stages?: ProjectStageMap;
+  nextAction?: ProjectNextAction;
+};
 
 export default function DashboardPage() {
   const { session, accessToken } = useAuth();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [platform, setPlatform] = useState("");
+  const router = useRouter();
+  const [cards, setCards] = useState<RecentCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  useEffect(() => {
     if (!accessToken) {
       return;
     }
-    const data = await api<Project[]>("/projects", { accessToken });
-    setProjects(data);
-  }
-
-  useEffect(() => {
-    void load().catch((err: Error) => setError(err.message));
+    let cancelled = false;
+    void api<Project[]>("/projects", { accessToken })
+      .then(async (projects) => {
+        const recent = [...projects]
+          .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
+          .slice(0, RECENT_LIMIT);
+        const loaded = await Promise.all(
+          recent.map(async (project) => {
+            try {
+              const snapshot = await loadProjectStatus(accessToken, project.id);
+              return { project: snapshot.project, stages: snapshot.stages, nextAction: snapshot.nextAction };
+            } catch {
+              return { project };
+            }
+          }),
+        );
+        if (!cancelled) {
+          setCards(loaded);
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setError(err.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [accessToken]);
 
-  async function createProject(event: React.FormEvent) {
-    event.preventDefault();
-    if (!accessToken) {
-      return;
-    }
-    setError(null);
-    try {
-      await api("/projects", {
-        method: "POST",
-        accessToken,
-        body: JSON.stringify({ name, industry, platform }),
-      });
-      setName("");
-      setIndustry("");
-      setPlatform("");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
-    }
-  }
-
   return (
-    <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <section>
-        <h1 className="text-2xl font-semibold">工作台</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          当前工作空间：{session?.workspace.name}（{session?.workspace.slug}）
-        </p>
+    <main className="px-4 py-6 md:px-6">
+      <PageHeader
+        title="工作台"
+        description={`你好，${session?.user.name ?? "创作者"}。从最近的项目继续，或新建一个内容项目。`}
+      />
+      <section className="mb-8 rounded-xl border border-neutral-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-medium">创建项目</h2>
+        {accessToken ? (
+          <CreateProjectForm
+            accessToken={accessToken}
+            onCreated={(project) => router.push(`/dashboard/projects/${project.id}`)}
+          />
+        ) : null}
       </section>
-
-      <form className="flex flex-wrap gap-2" onSubmit={(event) => void createProject(event)}>
-        <input
-          className="rounded border px-3 py-2"
-          placeholder="项目名称"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
+      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+      {!cards ? <p className="text-sm text-neutral-600">正在加载项目…</p> : null}
+      {cards && cards.length === 0 ? (
+        <EmptyState
+          title="还没有项目"
+          description="创建一个项目，开始从产品信息走到发布。"
         />
-        <input
-          className="rounded border px-3 py-2"
-          placeholder="行业"
-          value={industry}
-          onChange={(event) => setIndustry(event.target.value)}
-        />
-        <input
-          className="rounded border px-3 py-2"
-          placeholder="平台"
-          value={platform}
-          onChange={(event) => setPlatform(event.target.value)}
-        />
-        <button className="rounded bg-black px-4 py-2 text-white" type="submit">
-          创建项目
-        </button>
-      </form>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <ul className="space-y-2">
-        {projects.map((project) => (
-          <li key={project.id} className="rounded border px-4 py-3">
-            <Link href={`/dashboard/projects/${project.id}`} className="font-medium underline">
-              {project.name}
-            </Link>
-            <p className="text-sm text-neutral-600">
-              {[project.industry, project.platform].filter(Boolean).join(" · ") || "未填写行业/平台"}
-            </p>
-          </li>
-        ))}
-        {projects.length === 0 ? <li className="text-sm text-neutral-500">还没有项目</li> : null}
-      </ul>
+      ) : null}
+      {cards && cards.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium">最近项目</h2>
+          {cards.map((card) => (
+            <ProjectCard key={card.project.id} project={card.project} stages={card.stages} nextAction={card.nextAction} />
+          ))}
+        </section>
+      ) : null}
     </main>
   );
 }

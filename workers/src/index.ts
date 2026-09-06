@@ -1,7 +1,8 @@
 /**
- * BullMQ workers 入口。
- * 初始化阶段仅占位：不连接 Redis，不注册队列，不执行任务。
+ * Worker 进程边界。
+ * 实际执行在 apps/backend（JobProcessor → VideoGenerationService），
+ * 避免复制 Provider / Storage。
  */
-export function bootstrap(): void {
-  console.log("[workers] scaffold ready");
+export async function bootstrap(): Promise<void> {
+  await import('../../apps/backend/dist/worker.js');
 }

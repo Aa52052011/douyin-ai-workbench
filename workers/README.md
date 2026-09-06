@@ -1,9 +1,17 @@
 # workers
 
-耗时任务异步执行入口（规划使用 Redis + BullMQ）。
+耗时 Job 的独立进程。PostgreSQL `Job` 是事实来源；Redis / BullMQ 只负责投递。
 
-当前初始化阶段：
+```bash
+npm run db:up
+npm run build -w backend
+npm run start -w workers
+```
 
-- 不安装 BullMQ
-- 不连接 Redis
-- 不注册任何队列或处理器
+开发：
+
+```bash
+npm run dev:worker
+```
+
+需要 `DATABASE_URL` 与 `REDIS_URL`。Queue 名：`acf-jobs`。payload 只有 `{ jobId }`。

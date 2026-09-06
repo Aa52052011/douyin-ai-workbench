@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import type { AuthContext } from '../auth/auth.types.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -9,6 +9,7 @@ import { RequirePermission } from '../authz/require-permission.decorator.js';
 import { resolveRequestId } from '../common/request-id.js';
 import { AgentsService } from './agent.service.js';
 import { ExecuteAgentDto } from './dto/execute-agent.dto.js';
+import { ListAgentRunsQueryDto } from './dto/list-agent-runs.dto.js';
 
 @Controller('agents')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -18,6 +19,15 @@ export class AgentsController {
   @Get()
   list() {
     return this.agents.listAgents();
+  }
+
+  @Get('runs')
+  listRuns(
+    @CurrentUser() auth: AuthContext,
+    @Query() query: ListAgentRunsQueryDto,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.agents.listRuns(auth, query, workspaceHint);
   }
 
   @Get('runs/:id')

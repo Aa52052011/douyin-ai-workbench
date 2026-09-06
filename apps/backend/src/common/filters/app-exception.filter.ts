@@ -24,6 +24,14 @@ export class AppExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    if (isMulterFileTooLarge(exception)) {
+      response.status(HttpStatus.BAD_REQUEST).json({
+        code: ErrorCode.VALIDATION_ERROR,
+        message: 'Import file is too large',
+      });
+      return;
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const raw = exception.getResponse();
@@ -31,6 +39,13 @@ export class AppExceptionFilter implements ExceptionFilter {
         response.status(status).json({
           code: ErrorCode.VALIDATION_ERROR,
           message: 'Validation failed',
+        });
+        return;
+      }
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+        response.status(HttpStatus.BAD_REQUEST).json({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Import file is too large',
         });
         return;
       }
@@ -58,6 +73,15 @@ export class AppExceptionFilter implements ExceptionFilter {
       message: 'Internal server error',
     });
   }
+}
+
+function isMulterFileTooLarge(exception: unknown): boolean {
+  return Boolean(
+    exception &&
+      typeof exception === 'object' &&
+      'code' in exception &&
+      (exception as { code?: string }).code === 'LIMIT_FILE_SIZE',
+  );
 }
 
 function isValidationResponse(raw: unknown): boolean {

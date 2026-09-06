@@ -1,7 +1,6 @@
 # Agent Engine
 
-状态：基础设施已落地。本阶段 **只建立引擎**，不实现业务 Agent。  
-唯一测试 Agent：`system.echo:v1`。不调用真实 LLM。
+状态：基础设施已落地。测试 Agent：`system.echo:v1`。业务 Agent：`account.positioning:v1`（见 [account-positioning-agent.md](./account-positioning-agent.md)）。
 
 依据：[architecture.md](./architecture.md)、[auth-architecture.md](./auth-architecture.md)、[database-architecture.md](./database-architecture.md)。
 
@@ -97,8 +96,8 @@ AI Engine 负责：同一套内部执行协议。本机无 Python 时不强制�
 
 Agent **不得**直接写 OpenAI / Anthropic / Google / DeepSeek / Qwen SDK。
 
-只调用 `ModelRouter.generate()`。V1 唯一实现：`MockModelProvider`。  
-未来可按 Agent / Tenant / Subscription / Task 选模型。本阶段不计费。
+只调用 `ModelRouter.generate()`。实现：`MockModelProvider` + OpenAI-compatible `RealModelProvider`。  
+测试环境默认 Mock。未配置 `MODEL_*` 时不调用真实 LLM。本阶段不计费。
 
 ---
 
@@ -235,8 +234,8 @@ Run / 日志记录：`requestId`、agent、version、status、duration、errorCo
 
 - `enqueue()` + Redis / BullMQ
 - 按 Agent 不同 timeout / retry 队列
-- 真实 ModelProvider（仍经 ModelRouter）
-- 业务 Agent 注册（定位 / 选题 / 脚本 / 视频 / 分析）
+- 更多 ModelProvider（仍经 ModelRouter）
+- 其余业务 Agent（选题 / 脚本 / 视频 / 分析）
 - human-in-the-loop
 - Tenant / Subscription 路由与配额
 - AI Engine mTLS

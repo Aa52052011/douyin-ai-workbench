@@ -1,0 +1,1 @@
+export const COMPOSE_PROVIDER = Symbol('COMPOSE_PROVIDER');

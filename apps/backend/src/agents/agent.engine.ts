@@ -82,10 +82,11 @@ export class AgentEngine {
         data: {
           status: AgentRunStatus.COMPLETED,
           output: (result.output ?? {}) as Prisma.InputJsonValue,
-          inputTokens: usage?.inputTokens,
-          outputTokens: usage?.outputTokens,
-          totalTokens: usage?.totalTokens,
-          estimatedCost: usage ? new Prisma.Decimal(usage.estimatedCost) : undefined,
+          inputTokens: usage?.inputTokens ?? undefined,
+          outputTokens: usage?.outputTokens ?? undefined,
+          totalTokens: usage?.totalTokens ?? undefined,
+          estimatedCost:
+            usage?.estimatedCost != null ? new Prisma.Decimal(usage.estimatedCost) : undefined,
           completedAt,
         },
       });
@@ -95,9 +96,9 @@ export class AgentEngine {
         version: definition.version,
         status: AgentRunStatus.COMPLETED,
         durationMs: completedAt.getTime() - startedAt.getTime(),
-        inputTokens: usage?.inputTokens,
-        outputTokens: usage?.outputTokens,
-        totalTokens: usage?.totalTokens,
+        inputTokens: usage?.inputTokens ?? undefined,
+        outputTokens: usage?.outputTokens ?? undefined,
+        totalTokens: usage?.totalTokens ?? undefined,
       });
       return toPublicAgentRun(updated);
     } catch (error) {

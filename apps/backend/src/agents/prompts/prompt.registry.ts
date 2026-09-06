@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ErrorCode } from '../../common/errors/app-error.js';
 import { AgentError } from '../agent.errors.js';
 import { ECHO_AGENT_ID, ECHO_AGENT_VERSION } from '../agent.types.js';
+import { accountPositioningPromptV1 } from './account-positioning.prompt.js';
+import { campaignStrategyPromptV1 } from './campaign-strategy.prompt.js';
+import { contentPlanningPromptV1 } from './content-planning.prompt.js';
+import { marketIntelligencePromptV1 } from './market-intelligence.prompt.js';
+import { scriptGenerationPromptV1 } from './script-generation.prompt.js';
 import type { PromptTemplate, RenderedPrompt } from './prompt.types.js';
 
 @Injectable()
@@ -15,6 +20,11 @@ export class PromptRegistry {
       systemPrompt: 'You are system.echo. Repeat the user message. Do not call external models.',
       userPromptTemplate: '{{message}}',
     });
+    this.register(accountPositioningPromptV1);
+    this.register(contentPlanningPromptV1);
+    this.register(scriptGenerationPromptV1);
+    this.register(marketIntelligencePromptV1);
+    this.register(campaignStrategyPromptV1);
   }
 
   register(template: PromptTemplate): void {

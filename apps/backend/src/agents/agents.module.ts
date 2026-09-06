@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { AuthzModule } from '../authz/authz.module.js';
+import { MetricsModule } from '../metrics/metrics.module.js';
 import { AgentsController } from './agent.controller.js';
 import { AgentEngine } from './agent.engine.js';
 import { AgentRegistry } from './agent.registry.js';
@@ -10,17 +11,21 @@ import { AiEngineExecutor } from './executors/ai-engine.executor.js';
 import { InProcessAgentExecutor } from './executors/in-process.executor.js';
 import { MockModelProvider } from './models/mock.provider.js';
 import { ModelRouter } from './models/model.router.js';
+import { RealModelProvider } from './models/real.provider.js';
 import { PromptRegistry } from './prompts/prompt.registry.js';
 import { ToolRegistry } from './tools/tool.registry.js';
+import { EmptyTrendDataProvider } from './trends/empty-trend-data.provider.js';
 
 @Module({
-  imports: [AuthModule, AuthzModule],
+  imports: [AuthModule, AuthzModule, MetricsModule],
   controllers: [AgentsController],
   providers: [
     AgentRegistry,
     PromptRegistry,
     ToolRegistry,
+    EmptyTrendDataProvider,
     MockModelProvider,
+    RealModelProvider,
     ModelRouter,
     InProcessAgentExecutor,
     AgentsService,
@@ -37,5 +42,6 @@ import { ToolRegistry } from './tools/tool.registry.js';
       inject: [InProcessAgentExecutor],
     },
   ],
+  exports: [AgentsService, MockModelProvider],
 })
 export class AgentsModule {}

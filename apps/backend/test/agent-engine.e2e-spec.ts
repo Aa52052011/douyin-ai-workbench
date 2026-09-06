@@ -67,9 +67,15 @@ describe('Agent Engine (e2e)', () => {
       .get('/agents')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].id).toBe('system.echo');
-    expect(res.body[0].version).toBe('v1');
+    expect(res.body.map((item: { id: string }) => item.id).sort()).toEqual([
+      'account.positioning',
+      'campaign.strategy',
+      'content.planning',
+      'market.intelligence',
+      'script.generation',
+      'system.echo',
+    ]);
+    expect(res.body.find((item: { id: string }) => item.id === 'system.echo').version).toBe('v1');
   });
 
   it('executes system.echo and persists a completed AgentRun', async () => {

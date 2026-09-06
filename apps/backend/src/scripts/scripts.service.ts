@@ -1,0 +1,294 @@
+import { Injectable } from '@nestjs/common';
+import { ContentPlanStatus, Prisma, PrismaClient, ScriptStatus } from '@prisma/client';
+import { AgentsService } from '../agents/agent.service.js';
+import {
+  SCRIPT_GENERATION_AGENT_ID,
+  SCRIPT_GENERATION_AGENT_VERSION,
+} from '../agents/agent.types.js';
+import {
+  concatNarration,
+  parseTargetDuration,
+} from '../agents/definitions/script-generation.agent.js';
+import type { ScriptOutput } from '../agents/definitions/script-generation.types.js';
+import type { AccountPositioningOutput } from '../agents/definitions/account-positioning.types.js';
+import type { ContentPlanOutput, ContentTopic } from '../agents/definitions/content-planning.types.js';
+import type { AuthContext } from '../auth/auth.types.js';
+import { resolveWorkspaceId } from '../authz/workspace-context.js';
+import { AppError, ErrorCode } from '../common/errors/app-error.js';
+import { isUuid } from '../common/ids.js';
+import { toPublicScript, type ScriptPublic } from './scripts.mapper.js';
+
+const ALLOWED_PLAN_STATUS = new Set<ContentPlanStatus>([
+  ContentPlanStatus.CONFIRMED,
+  ContentPlanStatus.ARCHIVED,
+]);
+
+@Injectable()
+export class ScriptsService {
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly agents: AgentsService,
+  ) {}
+
+  async list(
+    auth: AuthContext,
+    query: { projectId: string; contentPlanId?: string; topicId?: string; status?: ScriptStatus },
+    workspaceHint?: string,
+  ): Promise<ScriptPublic[]> {
+    const workspaceId = resolveWorkspaceId(auth, workspaceHint);
+    await this.requireProject(auth.tenantId, workspaceId, query.projectId);
+    const scripts = await this.prisma.script.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        workspaceId,
+        projectId: query.projectId,
+        contentPlanId: query.contentPlanId,
+        topicId: query.topicId,
+        status: query.status,
+        deletedAt: null,
+      },
+      orderBy: [{ contentPlanId: 'desc' }, { topicId: 'desc' }, { version: 'desc' }],
+    });
+    return scripts.map(toPublicScript);
+  }
+
+  async getById(auth: AuthContext, id: string, workspaceHint?: string): Promise<ScriptPublic> {
+    return toPublicScript(await this.requireScript(auth, id, workspaceHint));
+  }
+
+  async create(
+    auth: AuthContext,
+    input: {
+      contentPlanId: string;
+      topicId: string;
+      targetDuration?: number;
+      requirements?: string;
+    },
+    meta: { requestId: string; locale?: string; workspaceHint?: string },
+  ): Promise<ScriptPublic> {
+    const workspaceId = resolveWorkspaceId(auth, meta.workspaceHint);
+    const plan = await this.requirePlan(auth.tenantId, workspaceId, input.contentPlanId);
+    await this.requireProject(auth.tenantId, workspaceId, plan.projectId);
+    if (!ALLOWED_PLAN_STATUS.has(plan.status)) {
+      throw new AppError(ErrorCode.CONTENT_PLAN_CONFLICT);
+    }
+    const topic = findTopic(plan.payload, input.topicId);
+    if (!topic) {
+      throw new AppError(ErrorCode.SCRIPT_TOPIC_NOT_FOUND);
+    }
+    const payload = asPlanPayload(plan.payload);
+    const targetDuration = parseTargetDuration(input.targetDuration, topic.estimatedDuration);
+    const positioning = plan.positioningSnapshot as AccountPositioningOutput;
+
+    const run = await this.agents.execute(
+      auth,
+      {
+        agentId: SCRIPT_GENERATION_AGENT_ID,
+        agentVersion: SCRIPT_GENERATION_AGENT_VERSION,
+        projectId: plan.projectId,
+        input: {
+          contentPlanId: plan.id,
+          topicId: topic.id,
+          topic,
+          positioning,
+          platform: plan.platform ?? payload?.platform ?? 'douyin',
+          contentStyle: payload?.contentStyle,
+          planTitle: plan.title,
+          targetDuration,
+          requirements: input.requirements,
+        },
+      },
+      meta,
+    );
+
+    const output = run.output as ScriptOutput;
+    return this.createVersionedRow({
+      tenantId: auth.tenantId,
+      workspaceId,
+      projectId: plan.projectId,
+      contentPlanId: plan.id,
+      topicId: topic.id,
+      title: output.title,
+      content: concatNarration(output),
+      payload: output,
+      topicSnapshot: topic,
+      sourceAgentRunId: run.id,
+    });
+  }
+
+  async update(
+    auth: AuthContext,
+    id: string,
+    input: { title?: string; content?: string; payload?: Record<string, unknown> },
+    workspaceHint?: string,
+  ): Promise<ScriptPublic> {
+    const current = await this.requireScript(auth, id, workspaceHint);
+    if (current.status !== ScriptStatus.DRAFT) {
+      throw new AppError(ErrorCode.SCRIPT_CONFLICT);
+    }
+    const updated = await this.prisma.script.update({
+      where: { id_tenantId: { id: current.id, tenantId: auth.tenantId } },
+      data: {
+        title: input.title,
+        content: input.content,
+        payload: input.payload as Prisma.InputJsonValue | undefined,
+      },
+    });
+    return toPublicScript(updated);
+  }
+
+  async confirm(auth: AuthContext, id: string, workspaceHint?: string): Promise<ScriptPublic> {
+    const current = await this.requireScript(auth, id, workspaceHint);
+    if (current.status !== ScriptStatus.DRAFT) {
+      throw new AppError(ErrorCode.SCRIPT_CONFLICT);
+    }
+    const updated = await this.prisma.script.update({
+      where: { id_tenantId: { id: current.id, tenantId: auth.tenantId } },
+      data: { status: ScriptStatus.CONFIRMED },
+    });
+    return toPublicScript(updated);
+  }
+
+  async archive(auth: AuthContext, id: string, workspaceHint?: string): Promise<ScriptPublic> {
+    const current = await this.requireScript(auth, id, workspaceHint);
+    if (current.status !== ScriptStatus.CONFIRMED) {
+      throw new AppError(ErrorCode.SCRIPT_CONFLICT);
+    }
+    const updated = await this.prisma.script.update({
+      where: { id_tenantId: { id: current.id, tenantId: auth.tenantId } },
+      data: { status: ScriptStatus.ARCHIVED },
+    });
+    return toPublicScript(updated);
+  }
+
+  private async requireScript(auth: AuthContext, id: string, workspaceHint?: string) {
+    if (!isUuid(id)) {
+      throw new AppError(ErrorCode.SCRIPT_NOT_FOUND);
+    }
+    const workspaceId = resolveWorkspaceId(auth, workspaceHint);
+    const script = await this.prisma.script.findFirst({
+      where: {
+        id,
+        tenantId: auth.tenantId,
+        workspaceId,
+        deletedAt: null,
+      },
+    });
+    if (!script) {
+      throw new AppError(ErrorCode.SCRIPT_NOT_FOUND);
+    }
+    return script;
+  }
+
+  private async requirePlan(tenantId: string, workspaceId: string, contentPlanId: string) {
+    if (!isUuid(contentPlanId)) {
+      throw new AppError(ErrorCode.CONTENT_PLAN_NOT_FOUND);
+    }
+    const plan = await this.prisma.contentPlan.findFirst({
+      where: {
+        id: contentPlanId,
+        tenantId,
+        workspaceId,
+        deletedAt: null,
+      },
+    });
+    if (!plan) {
+      throw new AppError(ErrorCode.CONTENT_PLAN_NOT_FOUND);
+    }
+    return plan;
+  }
+
+  private async requireProject(tenantId: string, workspaceId: string, projectId: string) {
+    if (!isUuid(projectId)) {
+      throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
+    }
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        tenantId,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
+    }
+    return project;
+  }
+
+  private async createVersionedRow(data: {
+    tenantId: string;
+    workspaceId: string;
+    projectId: string;
+    contentPlanId: string;
+    topicId: string;
+    title: string;
+    content: string;
+    payload: ScriptOutput;
+    topicSnapshot: ContentTopic;
+    sourceAgentRunId: string;
+  }): Promise<ScriptPublic> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const version = await this.nextVersion(data.tenantId, data.contentPlanId, data.topicId);
+      try {
+        const created = await this.prisma.script.create({
+          data: {
+            tenantId: data.tenantId,
+            workspaceId: data.workspaceId,
+            projectId: data.projectId,
+            contentPlanId: data.contentPlanId,
+            topicId: data.topicId,
+            title: data.title,
+            content: data.content,
+            version,
+            status: ScriptStatus.DRAFT,
+            payload: data.payload as unknown as Prisma.InputJsonValue,
+            topicSnapshot: data.topicSnapshot as unknown as Prisma.InputJsonValue,
+            sourceAgentRunId: data.sourceAgentRunId,
+          },
+        });
+        return toPublicScript(created);
+      } catch (error) {
+        if (isUniqueConflict(error) && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new AppError(ErrorCode.SCRIPT_CONFLICT);
+  }
+
+  private async nextVersion(
+    tenantId: string,
+    contentPlanId: string,
+    topicId: string,
+  ): Promise<number> {
+    const last = await this.prisma.script.findFirst({
+      where: { tenantId, contentPlanId, topicId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    return (last?.version ?? 0) + 1;
+  }
+}
+
+function findTopic(payload: unknown, topicId: string): ContentTopic | undefined {
+  const plan = asPlanPayload(payload);
+  return plan?.topics.find((item) => item.id === topicId);
+}
+
+function asPlanPayload(value: unknown): ContentPlanOutput | undefined {
+  if (!value || typeof value !== 'object' || !('topics' in value)) {
+    return undefined;
+  }
+  const topics = (value as { topics?: unknown }).topics;
+  if (!Array.isArray(topics)) {
+    return undefined;
+  }
+  return value as ContentPlanOutput;
+}
+
+function isUniqueConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}

@@ -1,21 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { ErrorCode } from '../../common/errors/app-error.js';
 import { AgentError } from '../agent.errors.js';
+import { resolveModelProviderId } from './model.config.js';
 import { MockModelProvider } from './mock.provider.js';
 import type { ModelGenerateRequest, ModelGenerateResult, ModelProvider } from './model.types.js';
+import { RealModelProvider } from './real.provider.js';
 
 /**
  * Agent 只通过 ModelRouter.generate() 访问模型。
- * V1 仅 Mock。未来可按 Agent / Tenant / Subscription / Task 选择 provider。
+ * test 强制 mock；development/production 必须显式 MODEL_PROVIDER。
  */
 @Injectable()
 export class ModelRouter {
   private readonly providers = new Map<string, ModelProvider>();
   private readonly defaultProviderId: string;
 
-  constructor(mock: MockModelProvider) {
+  constructor(mock: MockModelProvider, real: RealModelProvider) {
     this.register(mock);
-    this.defaultProviderId = mock.id;
+    this.register(real);
+    this.defaultProviderId = resolveModelProviderId();
   }
 
   register(provider: ModelProvider): void {

@@ -54,4 +54,28 @@ Desktop (Tauri, 后续)
 
 已完成：Agent Engine 基础设施（Definition 代码注册、AgentRun 入库、Mock Model/Tool、`system.echo`、Internal 协议）。详见 [agent-engine.md](./agent-engine.md)。
 
-未做：业务 Agent、真实 LLM、视频、外部 API、队列消费。
+已完成：第一个业务 Agent `account.positioning:v1`（结构化输出 + OpenAI-compatible RealModelProvider 骨架）。详见 [account-positioning-agent.md](./account-positioning-agent.md)。
+
+已完成：`content.planning:v1` 与 ContentPlan 版本化业务对象（JSONB Topic、positioningSnapshot、DRAFT → CONFIRMED → ARCHIVED）。详见 [content-planning-agent.md](./content-planning-agent.md)。
+
+已完成：`script.generation:v1` 与 Script 版本化（Topic JSONB、payload、topicSnapshot、DRAFT → CONFIRMED → ARCHIVED）。详见 [script-generation-agent.md](./script-generation-agent.md)。
+
+已完成：Asset / AssetLink / Job / Video 扩展、LocalStorage、Mock 成片。详见 [media-asset-implementation.md](./media-asset-implementation.md)。
+
+已完成：Redis + BullMQ + Worker 异步 Job。详见 [job-queue-worker.md](./job-queue-worker.md)。
+
+已完成：视频生产链（ProductionPlan + Visual/Voice/Subtitle/Compose Mock Stage + Job lease / heartbeat / crash recovery）。详见 [video-generation-pipeline-implementation.md](./video-generation-pipeline-implementation.md)。
+
+已完成：Finalize 短事务（Asset / VIDEO_OUTPUT / Video / Job 同提交，幂等）。详见 [video-finalization-consistency-implementation.md](./video-finalization-consistency-implementation.md)。
+
+已完成：可选本机 FFmpeg Compose（Mock TTS WAV + 色板 + SRT → 可播放 MP4）。详见 [ffmpeg-compose-implementation.md](./ffmpeg-compose-implementation.md)。
+
+已完成：可选 OpenAI-compatible 同步 TTS（`MEDIA_TTS_PROVIDER=openai-tts`，测试默认 Mock）。详见 [openai-compatible-tts-implementation.md](./openai-compatible-tts-implementation.md)。
+
+已完成：可选 MiniMax 同步 TTS（`MEDIA_TTS_PROVIDER=minimax-tts`，测试默认 Mock）。详见 [minimax-tts-implementation.md](./minimax-tts-implementation.md)。
+
+已完成：Publishing Provider 合同、Mock API 发布闭环，以及 Manual Export + Manual Publication。详见 [publishing-foundation.md](./publishing-foundation.md)。**未**接真实 Douyin API。
+
+已完成：Publication 级 Post Metrics 地基、Manual Metrics API、MOCK metrics sync、deterministic Aggregator、deterministic Performance Insight、compact feedback 注入 content.planning:v1。详见 [publication-metrics.md](./publication-metrics.md) 与 [content-planning-agent.md](./content-planning-agent.md)。**未**实现真实平台拉取 / scheduler / 自动 feedback loop。
+
+未做：ProviderRouter / 自动 fallback、对象存储、SocialDataX、**真实社媒发布 API**、完整日历 UI、Topic 表、影视剪辑实现。

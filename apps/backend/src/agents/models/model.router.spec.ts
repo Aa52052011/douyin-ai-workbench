@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MockModelProvider } from './mock.provider.js';
 import { ModelRouter } from './model.router.js';
+import { RealModelProvider } from './real.provider.js';
 
 describe('ModelRouter', () => {
   it('routes generate() through MockModelProvider without a real LLM', async () => {
-    const router = new ModelRouter(new MockModelProvider());
+    const router = new ModelRouter(new MockModelProvider(), new RealModelProvider());
     const result = await router.generate({
       prompt: 'hello',
       systemPrompt: 'echo',

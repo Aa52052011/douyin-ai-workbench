@@ -22,6 +22,7 @@ enum ContentPlanStatus {
   DRAFT
   GENERATING
   READY
+  CONFIRMED
   ARCHIVED
 }
 
@@ -29,6 +30,13 @@ enum ScriptStatus {
   DRAFT
   GENERATING
   READY
+  CONFIRMED
+  ARCHIVED
+}
+
+enum CampaignStrategyStatus {
+  READY
+  CONFIRMED
   ARCHIVED
 }
 
@@ -47,6 +55,117 @@ enum AgentRunStatus {
   CANCELLED
 }
 
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  SUBTITLE
+  DOCUMENT
+  SOURCE_VIDEO
+  SOURCE_AUDIO
+  OTHER
+}
+
+enum AssetStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum AssetLinkRole {
+  VIDEO_OUTPUT
+  VIDEO_SOURCE
+  VIDEO_AUDIO
+  VIDEO_BGM
+  VIDEO_SUBTITLE
+  VIDEO_COVER
+  VIDEO_PREVIEW
+  MOVIE_SOURCE
+  MOVIE_CLIP
+  MOVIE_VOICEOVER
+  MOVIE_SUBTITLE
+  MOVIE_COVER
+  MOVIE_OUTPUT
+}
+
+enum JobKind {
+  VIDEO_GENERATION
+  MOVIE_EDITING
+  TTS_GENERATION
+  SUBTITLE_GENERATION
+  VIDEO_COMPOSE
+  VIDEO_PUBLISH
+  PUBLICATION_METRICS_SYNC
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum Platform {
+  DOUYIN
+  TIKTOK
+  YOUTUBE
+  XIAOHONGSHU
+  BILIBILI
+  CHANNELS
+  MOCK
+}
+
+enum PlatformAccountStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  DISCONNECTED
+}
+
+enum PublicationMode {
+  API
+  MANUAL
+}
+
+enum PublicationStatus {
+  PENDING
+  UPLOADING
+  SUBMITTING
+  PROCESSING
+  PUBLISHED
+  FAILED
+  UNKNOWN_EXTERNAL_STATE
+  CANCELLED
+}
+
+enum SecretKind {
+  PLATFORM_OAUTH
+}
+
+/// 指标如何进入系统。与 provider（谁提供）正交。禁止 SCRAPE。
+enum MetricSource {
+  API
+  MANUAL
+  IMPORT
+}
+
+/// 市场数据来源。与 MetricSource 完全独立。禁止 SCRAPE。
+enum MarketSource {
+  DOUYIN_OFFICIAL
+  IMPORT
+  MANUAL
+  DESKTOP_ASSISTED
+  THIRD_PARTY
+}
+
+enum MarketResearchStatus {
+  DRAFT
+  READY
+  FAILED
+}
+
 /// 全局身份。不是隔离单元，禁止挂 tenant_id。
 model User {
   id           String    @id @default(uuid(7)) @db.Uuid
@@ -59,6 +178,7 @@ model User {
 
   memberships   Membership[]
   refreshTokens RefreshToken[]
+  publications  Publication[]
 
   @@map("users")
 }
@@ -80,6 +200,18 @@ model Tenant {
   videos       Video[]
   analytics    Analytics[]
   agentRuns    AgentRun[]
+  assets           Asset[]
+  assetLinks       AssetLink[]
+  jobs             Job[]
+  platformAccounts PlatformAccount[]
+  platformSecrets  PlatformSecret[]
+  publications     Publication[]
+  publicationMetricSnapshots PublicationMetricSnapshot[]
+  productBriefs    ProductBrief[]
+  marketResearches MarketResearch[]
+  marketResearchSnapshots MarketResearchSnapshot[]
+  marketInsights   MarketInsight[]
+  campaignStrategies CampaignStrategy[]
 
   @@map("tenants")
 }
@@ -118,6 +250,18 @@ model Workspace {
   videos       Video[]
   analytics    Analytics[]
   agentRuns    AgentRun[]
+  assets           Asset[]
+  assetLinks       AssetLink[]
+  jobs             Job[]
+  platformAccounts PlatformAccount[]
+  platformSecrets  PlatformSecret[]
+  publications     Publication[]
+  publicationMetricSnapshots PublicationMetricSnapshot[]
+  productBriefs    ProductBrief[]
+  marketResearches MarketResearch[]
+  marketResearchSnapshots MarketResearchSnapshot[]
+  marketInsights   MarketInsight[]
+  campaignStrategies CampaignStrategy[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, slug])
@@ -145,6 +289,16 @@ model Project {
   videos       Video[]
   analytics    Analytics[]
   agentRuns    AgentRun[]
+  assets       Asset[]
+  assetLinks   AssetLink[]
+  jobs         Job[]
+  publications Publication[]
+  publicationMetricSnapshots PublicationMetricSnapshot[]
+  productBriefs    ProductBrief[]
+  marketResearches MarketResearch[]
+  marketResearchSnapshots MarketResearchSnapshot[]
+  marketInsights   MarketInsight[]
+  campaignStrategies CampaignStrategy[]
 
   @@unique([id, tenantId])
   @@index([tenantId, workspaceId])
@@ -152,20 +306,28 @@ model Project {
   @@map("projects")
 }
 
-/// 内容规划。属于 Tenant + Workspace + Project。
+/// 内容规划。属于 Tenant + Workspace + Project。版本不可覆盖。
 model ContentPlan {
-  id          String            @id @default(uuid(7)) @db.Uuid
-  tenantId    String            @map("tenant_id") @db.Uuid
-  workspaceId String            @map("workspace_id") @db.Uuid
-  projectId   String            @map("project_id") @db.Uuid
-  title       String
-  description String?
-  status      ContentPlanStatus @default(DRAFT)
-  startDate   DateTime?         @map("start_date") @db.Date
-  endDate     DateTime?         @map("end_date") @db.Date
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  deletedAt   DateTime?         @map("deleted_at")
+  id                   String            @id @default(uuid(7)) @db.Uuid
+  tenantId             String            @map("tenant_id") @db.Uuid
+  workspaceId          String            @map("workspace_id") @db.Uuid
+  projectId            String            @map("project_id") @db.Uuid
+  title                String
+  description          String?
+  status               ContentPlanStatus @default(DRAFT)
+  version              Int               @default(1)
+  payload              Json              @default("{}")
+  positioningSnapshot  Json              @default("{}") @map("positioning_snapshot")
+  sourceAgentRunId     String?           @map("source_agent_run_id") @db.Uuid
+  planningDays         Int?              @map("planning_days")
+  postsPerDay          Int?              @map("posts_per_day")
+  platform             String?
+  usedTrendData        Boolean           @default(false) @map("used_trend_data")
+  startDate            DateTime?         @map("start_date") @db.Date
+  endDate              DateTime?         @map("end_date") @db.Date
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  deletedAt            DateTime?         @map("deleted_at")
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -173,25 +335,30 @@ model ContentPlan {
   scripts   Script[]
 
   @@unique([id, tenantId])
+  @@unique([tenantId, projectId, version])
   @@index([tenantId, workspaceId, projectId])
   @@index([tenantId, status])
   @@map("content_plans")
 }
 
-/// 脚本。可挂 ContentPlan；同一计划允许多个版本。
+/// 脚本。挂 ContentPlan + Topic；同 Topic 版本不可覆盖。
 model Script {
-  id            String       @id @default(uuid(7)) @db.Uuid
-  tenantId      String       @map("tenant_id") @db.Uuid
-  workspaceId   String       @map("workspace_id") @db.Uuid
-  projectId     String       @map("project_id") @db.Uuid
-  contentPlanId String?      @map("content_plan_id") @db.Uuid
-  title         String
-  content       String       @default("")
-  version       Int          @default(1)
-  status        ScriptStatus @default(DRAFT)
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  deletedAt     DateTime?    @map("deleted_at")
+  id               String       @id @default(uuid(7)) @db.Uuid
+  tenantId         String       @map("tenant_id") @db.Uuid
+  workspaceId      String       @map("workspace_id") @db.Uuid
+  projectId        String       @map("project_id") @db.Uuid
+  contentPlanId    String?      @map("content_plan_id") @db.Uuid
+  topicId          String?      @map("topic_id") @db.Uuid
+  title            String
+  content          String       @default("")
+  version          Int          @default(1)
+  status           ScriptStatus @default(DRAFT)
+  payload          Json         @default("{}")
+  topicSnapshot    Json         @default("{}") @map("topic_snapshot")
+  sourceAgentRunId String?      @map("source_agent_run_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   workspace   Workspace    @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -199,33 +366,39 @@ model Script {
   contentPlan ContentPlan? @relation(fields: [contentPlanId], references: [id], onDelete: Restrict)
   videos      Video[]
 
+  @@unique([id, tenantId])
+  @@unique([tenantId, contentPlanId, topicId, version])
   @@index([tenantId, workspaceId, projectId])
-  @@index([contentPlanId, version])
+  @@index([tenantId, contentPlanId, topicId])
   @@index([tenantId, status])
   @@map("scripts")
 }
 
-/// 视频元数据。只存路径 / storage key，不存二进制。
+/// 成片业务对象。文件在 Asset；filePath 仅兼容旧行，新业务禁止写入。
 model Video {
-  id          String      @id @default(uuid(7)) @db.Uuid
-  tenantId    String      @map("tenant_id") @db.Uuid
-  workspaceId String      @map("workspace_id") @db.Uuid
-  projectId   String      @map("project_id") @db.Uuid
-  scriptId    String?     @map("script_id") @db.Uuid
-  filePath    String?     @map("file_path")
-  duration    Int?
-  width       Int?
-  height      Int?
-  status      VideoStatus @default(PENDING)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-  deletedAt   DateTime?   @map("deleted_at")
+  id            String      @id @default(uuid(7)) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  workspaceId   String      @map("workspace_id") @db.Uuid
+  projectId     String      @map("project_id") @db.Uuid
+  scriptId      String?     @map("script_id") @db.Uuid
+  filePath      String?     @map("file_path")
+  outputAssetId String?     @map("output_asset_id") @db.Uuid
+  sourceJobId   String?     @map("source_job_id") @db.Uuid
+  duration      Int?
+  width         Int?
+  height        Int?
+  status        VideoStatus @default(PENDING)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
 
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  workspace Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  project   Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  script    Script?     @relation(fields: [scriptId], references: [id], onDelete: Restrict)
-  analytics Analytics[]
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace  Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project    Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  script     Script?     @relation(fields: [scriptId], references: [id], onDelete: Restrict)
+  analytics    Analytics[]
+  assetLinks   AssetLink[]
+  publications Publication[]
 
   @@unique([id, tenantId])
   @@index([tenantId, workspaceId, projectId])
@@ -234,7 +407,108 @@ model Video {
   @@map("videos")
 }
 
-/// 视频表现快照。同一 Video 可有多条时间点记录。
+/// 统一文件元数据。二进制在 StorageProvider，不进 Postgres。
+model Asset {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  workspaceId       String      @map("workspace_id") @db.Uuid
+  projectId         String      @map("project_id") @db.Uuid
+  type              AssetType
+  status            AssetStatus @default(PENDING)
+  storageProvider   String      @map("storage_provider")
+  storageKey        String      @map("storage_key")
+  originalFilename  String?     @map("original_filename")
+  mimeType          String?     @map("mime_type")
+  size              Int?
+  duration          Int?
+  width             Int?
+  height            Int?
+  metadata          Json        @default("{}")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  deletedAt         DateTime?   @map("deleted_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace  Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project    Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  assetLinks AssetLink[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, storageProvider, storageKey])
+  @@index([tenantId, workspaceId, projectId, type])
+  @@index([tenantId, status])
+  @@map("assets")
+}
+
+/// 媒体耗时任务。与 AgentRun 分离；retry 创建新行。
+model Job {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  kind        JobKind
+  status      JobStatus @default(PENDING)
+  provider    String?
+  model       String?
+  input       Json      @default("{}")
+  output      Json      @default("{}")
+  error       Json?
+  progress    Int       @default(0)
+  requestId   String    @map("request_id")
+  scriptId    String?   @map("script_id") @db.Uuid
+  videoId     String?   @map("video_id") @db.Uuid
+  agentRunId      String?   @map("agent_run_id") @db.Uuid
+  lockedAt        DateTime? @map("locked_at")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  attempt         Int       @default(0)
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace  Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project    Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  assetLinks AssetLink[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, status])
+  @@index([videoId])
+  @@index([kind, createdAt])
+  @@map("jobs")
+}
+
+/// 业务对象与 Asset 的角色关系。videoId / jobId 至少其一。
+model AssetLink {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  projectId   String        @map("project_id") @db.Uuid
+  assetId     String        @map("asset_id") @db.Uuid
+  videoId     String?       @map("video_id") @db.Uuid
+  jobId       String?       @map("job_id") @db.Uuid
+  role        AssetLinkRole
+  sortOrder   Int           @default(0) @map("sort_order")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project   Project   @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  asset     Asset     @relation(fields: [assetId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  video     Video?    @relation(fields: [videoId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  job       Job?      @relation(fields: [jobId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([tenantId, workspaceId, projectId])
+  @@index([assetId])
+  @@index([videoId])
+  @@index([jobId])
+  @@map("asset_links")
+}
+
+/// DEPRECATED：Video 级表现快照。禁止新业务写入。
+/// 新 SoT 是 PublicationMetricSnapshot（Publication 级、nullable、带 source）。
+/// 不要给本表补 publicationId / platform / source。不要迁移历史行。
 model Analytics {
   id               String   @id @default(uuid(7)) @db.Uuid
   tenantId         String   @map("tenant_id") @db.Uuid
@@ -309,4 +583,285 @@ model AgentRun {
   @@index([tenantId, status])
   @@index([agentId, createdAt])
   @@map("agent_runs")
+}
+
+/// Workspace 级外部平台账号。凭据只存 credentialRef，禁止明文 token。
+model PlatformAccount {
+  id                String                @id @default(uuid(7)) @db.Uuid
+  tenantId          String                @map("tenant_id") @db.Uuid
+  workspaceId       String                @map("workspace_id") @db.Uuid
+  platform          Platform
+  externalAccountId String                @map("external_account_id")
+  displayName       String                @map("display_name")
+  status            PlatformAccountStatus @default(ACTIVE)
+  credentialRef     String                @map("credential_ref") @db.Uuid
+  scopes            String[]              @default([])
+  metadata          Json                  @default("{}")
+  connectedAt       DateTime              @map("connected_at")
+  expiresAt         DateTime?             @map("expires_at")
+  lastRefreshedAt   DateTime?             @map("last_refreshed_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  deletedAt         DateTime?             @map("deleted_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace    Workspace     @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  publications Publication[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, workspaceId, platform, externalAccountId], map: "platform_accounts_tenant_ws_platform_ext_key")
+  @@index([tenantId, workspaceId, platform, status])
+  @@map("platform_accounts")
+}
+
+/// 加密凭据持久化。cipher/nonce/authTag 分离存储，禁止明文列。
+model PlatformSecret {
+  id         String     @id @default(uuid(7)) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  kind       SecretKind
+  cipher     Bytes
+  nonce      Bytes
+  authTag    Bytes      @map("auth_tag")
+  keyVersion Int        @map("key_version")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  revokedAt  DateTime?  @map("revoked_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, workspaceId])
+  @@map("platform_secrets")
+}
+
+/// 一次对外发布记录。不是 Video，也不是 Job。
+model Publication {
+  id                       String            @id @default(uuid(7)) @db.Uuid
+  tenantId                 String            @map("tenant_id") @db.Uuid
+  workspaceId              String            @map("workspace_id") @db.Uuid
+  projectId                String            @map("project_id") @db.Uuid
+  videoId                  String            @map("video_id") @db.Uuid
+  platformAccountId        String?           @map("platform_account_id") @db.Uuid
+  platform                 Platform
+  mode                     PublicationMode
+  status                   PublicationStatus @default(PENDING)
+  title                    String
+  description              String            @default("")
+  hashtags                 String[]          @default([])
+  visibility               String
+  scheduledAt              DateTime?         @map("scheduled_at")
+  publishedAt              DateTime?         @map("published_at")
+  externalPostId           String?           @map("external_post_id")
+  externalUrl              String?           @map("external_url")
+  providerUploadId         String?           @map("provider_upload_id")
+  providerItemId           String?           @map("provider_item_id")
+  idempotencyKey           String            @map("idempotency_key")
+  sourceJobId              String?           @map("source_job_id") @db.Uuid
+  errorCode                String?           @map("error_code")
+  errorMessage             String?           @map("error_message")
+  providerResponseMetadata Json              @default("{}") @map("provider_response_metadata")
+  createdByUserId          String            @map("created_by_user_id") @db.Uuid
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace       Workspace        @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project         Project          @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  video           Video            @relation(fields: [videoId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  platformAccount PlatformAccount? @relation(fields: [platformAccountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdBy       User             @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  metricSnapshots PublicationMetricSnapshot[]
+
+  @@unique([id, tenantId])
+  @@unique([id, tenantId, workspaceId, projectId], map: "publications_id_tenant_ws_project_key")
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, videoId, createdAt])
+  @@index([tenantId, platformAccountId, status])
+  @@index([tenantId, platform, externalPostId])
+  @@map("publications")
+}
+
+/// Publication 在 observedAt 的表现快照。append-mostly。禁止挂 videoId 作为归属。
+/// counts / rates 全部 nullable：null = unknown，0 = 明确报告零。
+model PublicationMetricSnapshot {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  workspaceId String       @map("workspace_id") @db.Uuid
+  projectId   String       @map("project_id") @db.Uuid
+  publicationId String     @map("publication_id") @db.Uuid
+  platform    Platform
+  source      MetricSource
+  collectionKey String     @map("collection_key")
+  observedAt  DateTime     @map("observed_at")
+  providerCollectedAt DateTime? @map("provider_collected_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  views       Int?
+  likes       Int?
+  comments    Int?
+  shares      Int?
+  favorites   Int?
+  averageWatchTimeSeconds Decimal? @map("average_watch_time_seconds") @db.Decimal(12, 3)
+  completionRate          Decimal? @map("completion_rate") @db.Decimal(8, 7)
+  newFollowers            Int?     @map("new_followers")
+
+  provider         String?
+  providerMetadata Json     @default("{}") @map("provider_metadata")
+  sourceJobId      String?  @map("source_job_id") @db.Uuid
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace   Workspace   @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project     Project     @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  publication Publication @relation(fields: [publicationId, tenantId, workspaceId, projectId], references: [id, tenantId, workspaceId, projectId], onDelete: Restrict, map: "pms_publication_scope_fkey")
+
+  @@unique([id, tenantId], map: "pms_id_tenant_key")
+  @@unique([tenantId, publicationId, source, collectionKey], map: "pms_collect_key")
+  @@index([tenantId, publicationId, observedAt], map: "pms_tenant_pub_observed_idx")
+  @@index([tenantId, workspaceId, projectId, observedAt], map: "pms_tenant_ws_proj_observed_idx")
+  @@index([tenantId, platform, observedAt], map: "pms_tenant_platform_observed_idx")
+  @@map("publication_metric_snapshots")
+}
+
+/// 项目级推广意图。版本不可覆盖；current = 最新 version。
+model ProductBrief {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  version     Int
+  payload     Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace        Workspace         @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project          Project           @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  marketResearches MarketResearch[]
+  campaignStrategies CampaignStrategy[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, projectId, version])
+  @@index([tenantId, workspaceId, projectId])
+  @@map("product_briefs")
+}
+
+/// 一次市场研究任务。版本不可覆盖。
+model MarketResearch {
+  id                   String               @id @default(uuid(7)) @db.Uuid
+  tenantId             String               @map("tenant_id") @db.Uuid
+  workspaceId          String               @map("workspace_id") @db.Uuid
+  projectId            String               @map("project_id") @db.Uuid
+  version              Int
+  status               MarketResearchStatus @default(DRAFT)
+  productBriefId       String?              @map("product_brief_id") @db.Uuid
+  productBriefSnapshot Json                 @default("{}") @map("product_brief_snapshot")
+  queryContext         Json                 @default("{}") @map("query_context")
+  sourceAgentRunId     String?              @map("source_agent_run_id") @db.Uuid
+  sourceJobId          String?              @map("source_job_id") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace    Workspace                @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project      Project                  @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  productBrief ProductBrief?            @relation(fields: [productBriefId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  snapshot     MarketResearchSnapshot?
+  insights     MarketInsight[]
+  campaignStrategies CampaignStrategy[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, projectId, version])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, status])
+  @@map("market_researches")
+}
+
+/// 一次研究的不可变样本结果。V1 每个 MarketResearch 最多一条。
+model MarketResearchSnapshot {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  marketResearchId String   @map("market_research_id") @db.Uuid
+  collectedAt      DateTime @map("collected_at")
+  timeWindow       Json?    @map("time_window")
+  sources          Json     @default("[]")
+  keywords         Json     @default("[]")
+  contents         Json     @default("[]")
+  competitors      Json     @default("[]")
+  trends           Json     @default("[]")
+  audienceSignals  Json     @default("[]") @map("audience_signals")
+  sampleStats      Json     @default("{}") @map("sample_stats")
+  dataQuality      Json     @default("{}") @map("data_quality")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace      Workspace      @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project        Project        @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  marketResearch MarketResearch @relation(fields: [marketResearchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([marketResearchId, tenantId])
+  @@index([tenantId, workspaceId, projectId])
+  @@map("market_research_snapshots")
+}
+
+/// 一次市场证据解释结果。版本不可覆盖；同一 Research 可多次重新分析。
+model MarketInsight {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  marketResearchId String   @map("market_research_id") @db.Uuid
+  version          Int
+  payload          Json     @default("{}")
+  sourceAgentRunId String?  @map("source_agent_run_id") @db.Uuid
+  idempotencyKey   String?  @map("idempotency_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace      Workspace      @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project        Project        @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  marketResearch MarketResearch @relation(fields: [marketResearchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  campaignStrategies CampaignStrategy[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, marketResearchId, version])
+  @@unique([tenantId, marketResearchId, idempotencyKey])
+  @@index([tenantId, workspaceId, projectId])
+  @@index([tenantId, marketResearchId, createdAt])
+  @@map("market_insights")
+}
+
+/// 项目级推广策略。版本不可覆盖。10.6 只建表与 input foundation，10.7 才由 Agent 写入正式 payload。
+model CampaignStrategy {
+  id               String                 @id @default(uuid(7)) @db.Uuid
+  tenantId         String                 @map("tenant_id") @db.Uuid
+  workspaceId      String                 @map("workspace_id") @db.Uuid
+  projectId        String                 @map("project_id") @db.Uuid
+  version          Int
+  status           CampaignStrategyStatus @default(READY)
+  productBriefId   String?                @map("product_brief_id") @db.Uuid
+  marketResearchId String?                @map("market_research_id") @db.Uuid
+  marketInsightId  String?                @map("market_insight_id") @db.Uuid
+  positioningRunId String                 @map("positioning_run_id") @db.Uuid
+  payload          Json                   @default("{}")
+  inputSnapshot    Json                   @default("{}") @map("input_snapshot")
+  sourceAgentRunId String?                @map("source_agent_run_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace      Workspace       @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project        Project         @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  productBrief   ProductBrief?   @relation(fields: [productBriefId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  marketResearch MarketResearch? @relation(fields: [marketResearchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  marketInsight  MarketInsight?  @relation(fields: [marketInsightId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, projectId, version])
+  @@index([tenantId, workspaceId, projectId])
+  @@map("campaign_strategies")
 }

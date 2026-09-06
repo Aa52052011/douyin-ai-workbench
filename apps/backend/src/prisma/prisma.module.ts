@@ -1,7 +1,16 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Injectable, Module, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 export const PRISMA = Symbol('PRISMA');
+
+@Injectable()
+class PrismaShutdown implements OnModuleDestroy {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.prisma.$disconnect();
+  }
+}
 
 @Global()
 @Module({
@@ -15,6 +24,7 @@ export const PRISMA = Symbol('PRISMA');
             : undefined,
         }),
     },
+    PrismaShutdown,
   ],
   exports: [PrismaClient],
 })

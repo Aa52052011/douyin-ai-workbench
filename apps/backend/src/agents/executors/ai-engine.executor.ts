@@ -75,7 +75,11 @@ function mapRemoteCode(code?: string) {
     case ErrorCode.AGENT_NOT_FOUND:
     case ErrorCode.AGENT_INVALID_INPUT:
     case ErrorCode.AGENT_TIMEOUT:
+    case ErrorCode.AGENT_INVALID_OUTPUT:
     case ErrorCode.MODEL_ERROR:
+    case ErrorCode.MODEL_PROVIDER_NOT_CONFIGURED:
+    case ErrorCode.MODEL_REQUEST_FAILED:
+    case ErrorCode.MODEL_TIMEOUT:
     case ErrorCode.TOOL_ERROR:
     case ErrorCode.AGENT_CANCELLED:
     case ErrorCode.AGENT_EXECUTION_FAILED:

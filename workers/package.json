@@ -2,9 +2,11 @@
   "name": "workers",
   "version": "0.0.1",
   "private": true,
-  "description": "异步任务 workers 占位包（BullMQ，初始化阶段不连接 Redis）",
+  "type": "module",
+  "description": "异步 Job Worker（BullMQ）。复用 backend 的 VideoGenerationService。",
   "scripts": {
-    "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.json"
+    "start": "node ../apps/backend/dist/worker.js",
+    "start:dev": "npm run start:worker:dev -w backend",
+    "build": "npm run build -w backend"
   }
 }

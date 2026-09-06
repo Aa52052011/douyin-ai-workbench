@@ -37,3 +37,29 @@ Thumbs.db
 # test / coverage
 coverage
 .nyc_output
+
+# local media storage / runtime output
+/storage
+apps/backend/storage/
+uploads/
+exports/
+*.part
+
+# DB / media backup artifacts (never commit dumps)
+/backups/
+*.dump
+*.sql.gz
+pg_dump_*.sql
+
+# screenshots / acceptance screenshots outside .local
+*.png.local
+**/playwright-report/
+**/test-results/
+
+# machine-local runtime (embedded Postgres, logs, temp)
+.local/
+
+# local credentials / certs
+*.key
+*.pem
+!*.example.pem

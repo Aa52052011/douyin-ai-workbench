@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../lib/auth-context";
 import { api } from "../../../lib/api";
@@ -64,7 +65,15 @@ export default function AgentTestPage() {
       <section>
         <h1 className="text-2xl font-semibold">Agent 测试</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          仅用于验证 Agent Engine。当前只注册 system.echo。
+          Engine 联调用 system.echo。业务 Agent：
+          <Link className="ml-1 underline" href="/dashboard/agents/account-positioning">
+            账号定位
+          </Link>
+          、
+          <Link className="ml-1 underline" href="/dashboard/content-planning">
+            内容规划
+          </Link>
+          。
         </p>
       </section>
 

@@ -1,7 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api, type AuthSession } from "./api";
+import {
+  applyAuthSession,
+  getAuthSnapshot,
+  getServerAuthSnapshot,
+  hydrateAuthSession,
+  logoutSession,
+  subscribeAuthSession,
+} from "./auth-session";
 
 type AuthState = {
   session: Omit<AuthSession, "accessToken" | "expiresIn"> | null;
@@ -16,66 +24,50 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [session, setSession] = useState<AuthState["session"]>(null);
-  const [ready, setReady] = useState(false);
+  const snapshot = useSyncExternalStore(subscribeAuthSession, getAuthSnapshot, getServerAuthSnapshot);
   const [error, setError] = useState<string | null>(null);
 
-  function applySession(data: AuthSession) {
-    setAccessToken(data.accessToken ?? null);
-    setSession({
-      user: data.user,
-      tenant: data.tenant,
-      workspace: data.workspace,
-      role: data.role,
-    });
-  }
-
-  async function hydrate() {
-    try {
-      const refreshed = await api<AuthSession>("/auth/refresh", { method: "POST", body: "{}" });
-      applySession(refreshed);
-    } catch {
-      setAccessToken(null);
-      setSession(null);
-    } finally {
-      setReady(true);
-    }
-  }
-
   useEffect(() => {
-    void hydrate();
+    let cancelled = false;
+    void hydrateAuthSession().then(() => {
+      if (cancelled) {
+        return;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const value = useMemo<AuthState>(
     () => ({
-      session,
-      accessToken,
-      ready,
-      error,
+      session: snapshot.session,
+      accessToken: snapshot.accessToken,
+      ready: snapshot.ready,
+      error: error ?? snapshot.error,
       async register(input) {
         setError(null);
         const data = await api<AuthSession>("/auth/register", {
           method: "POST",
           body: JSON.stringify(input),
+          skipAuthRecovery: true,
         });
-        applySession(data);
+        applyAuthSession(data);
       },
       async login(input) {
         setError(null);
         const data = await api<AuthSession>("/auth/login", {
           method: "POST",
           body: JSON.stringify(input),
+          skipAuthRecovery: true,
         });
-        applySession(data);
+        applyAuthSession(data);
       },
       async logout() {
-        await api("/auth/logout", { method: "POST", body: "{}" });
-        setAccessToken(null);
-        setSession(null);
+        await logoutSession();
       },
     }),
-    [accessToken, error, ready, session],
+    [error, snapshot.accessToken, snapshot.error, snapshot.ready, snapshot.session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
