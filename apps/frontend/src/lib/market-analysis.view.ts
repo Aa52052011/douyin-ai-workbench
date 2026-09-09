@@ -114,12 +114,53 @@ const EVIDENCE_DESCRIPTIONS: Record<string, string> = {
 };
 
 const LIMITATION_LABELS: Record<string, string> = {
-  NO_MARKET_DATA: "当前没有可用于分析的市场样本",
-  LIMITED_SAMPLE: "当前数据只代表导入样本",
+  NO_MARKET_DATA: "暂无可分析市场样本",
+  LIMITED_SAMPLE: "当前市场样本较少",
+  MANUAL_ONLY: "当前主要基于人工补充信息",
   UNKNOWN_SELECTION_METHOD: "样本选择方式未知",
-  MISSING_METRICS: "部分作品缺少互动指标",
-  MISSING_CONTENT_METRICS: "部分作品缺少互动指标",
+  MISSING_METRICS: "缺少真实表现数据",
+  MISSING_CONTENT_METRICS: "缺少真实表现数据",
+  INSUFFICIENT_DATA: "当前样本不足以形成有效分析",
+  LIMITED_SIGNAL: "样本信号有限",
+  SMALL_KEYWORD_SAMPLE: "关键词样本较少",
+  NO_MARKET_INSIGHT: "暂无可用市场分析",
+  NO_PERFORMANCE_HISTORY: "暂无历史表现数据",
+  LIMITED_MARKET_SAMPLE: "当前市场样本较少",
 };
+
+const RAW_LIMITATION_CODE_RE =
+  /\b(NO_MARKET_DATA|LIMITED_SAMPLE|MANUAL_ONLY|MISSING_METRICS|MISSING_CONTENT_METRICS|INSUFFICIENT_DATA|LIMITED_SIGNAL|SMALL_KEYWORD_SAMPLE|UNKNOWN_SELECTION_METHOD|NO_MARKET_INSIGHT|NO_PERFORMANCE_HISTORY|LIMITED_MARKET_SAMPLE|BRIEF_VERSION_MISMATCH)\b/;
+
+const UNKNOWN_LIMITATION_FALLBACK =
+  "当前可用信息仍有限，建议补充更多市场素材或先执行首轮验证。";
+
+export function humanizeLimitationText(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (LIMITATION_LABELS[trimmed]) {
+    return LIMITATION_LABELS[trimmed];
+  }
+  if (/^[A-Z][A-Z0-9_]+$/.test(trimmed)) {
+    return UNKNOWN_LIMITATION_FALLBACK;
+  }
+  // Model-generated English caveats that embed raw codes — replace as a whole sentence.
+  if (/missing metrics under LIMITED_SAMPLE/i.test(trimmed)) {
+    return "当前样本较少，并且缺少真实表现数据。";
+  }
+  if (/LIMITED_SAMPLE/i.test(trimmed) && /MISSING_METRICS|missing metrics/i.test(trimmed)) {
+    return "当前样本较少，并且缺少真实表现数据。";
+  }
+  if (RAW_LIMITATION_CODE_RE.test(trimmed)) {
+    return UNKNOWN_LIMITATION_FALLBACK;
+  }
+  return trimmed;
+}
+
+export function humanizeDataLimitation(value: string): string {
+  return humanizeLimitationText(value);
+}
 
 const FORBIDDEN_PLATFORM_CLAIMS = ["全网高热关键词", "行业爆款内容", "全抖音", "市场规模"];
 
@@ -152,7 +193,7 @@ export function analysisConfidenceLabel(value?: string): string {
     case "LOW":
       return "可信度较低";
     case "MEDIUM":
-      return "可信度中等";
+      return "可信度一般";
     case "HIGH":
       return "可信度较高";
     default:
@@ -191,31 +232,17 @@ export function sufficiencyLabel(value?: string): string {
 }
 
 export function researchQualityWarning(sufficiency?: string): string | null {
-  if (sufficiency === "LIMITED") {
-    return "当前样本有限，分析结果会更保守。";
-  }
-  if (sufficiency === "NONE") {
-    return "当前数据不足，建议补充市场样本。";
+  if (sufficiency === "LIMITED" || sufficiency === "NONE") {
+    return "目前市场信息较少，本轮分析会更多依赖你的产品信息和已确认的研究方向，结论可信度会相对较低。";
   }
   return null;
 }
 
 export function noneGenerateNote(sufficiency?: string): string | null {
   if (sufficiency === "NONE") {
-    return "当前样本不足，无法形成有效市场分析。不会产生有效结论。";
+    return "当前没有可用市场样本。仍可生成一版低数据市场分析，但不会给出已验证的市场结论。";
   }
   return null;
-}
-
-export function humanizeDataLimitation(value: string): string {
-  const trimmed = value.trim();
-  if (LIMITATION_LABELS[trimmed]) {
-    return LIMITATION_LABELS[trimmed];
-  }
-  if (/^[A-Z][A-Z0-9_]+$/.test(trimmed)) {
-    return "当前分析存在数据限制";
-  }
-  return trimmed;
 }
 
 export function humanizeMarketEvidence(item: MarketEvidenceItemRecord): HumanEvidenceView {
@@ -387,11 +414,13 @@ export function toInsightItemView(
   }
   const traces = matchEvidenceRefs(item.evidenceCodes, catalog);
   const count = traces.length || item.evidenceCodes?.length || 0;
+  const caveatRaw = item.caveat?.trim();
+  const caveat = caveatRaw ? humanizeLimitationText(caveatRaw) : undefined;
   return {
-    statement,
+    statement: humanizeLimitationText(statement) || statement,
     confidenceLabel: analysisConfidenceLabel(item.confidence),
     evidenceCountLabel: count > 0 ? `基于 ${count} 条分析依据` : "",
-    caveat: item.caveat?.trim() || undefined,
+    caveat: caveat || undefined,
     traces,
   };
 }
@@ -418,13 +447,16 @@ export function insightView(payload: MarketInsightPayload | undefined, catalog: 
     section("对下一步策略的启示", payload.strategicImplications, catalog),
   ].filter((item): item is InsightSectionView => Boolean(item));
 
+  const executiveSummaryRaw = payload.executiveSummary?.trim() ?? "";
   return {
-    executiveSummary: payload.executiveSummary?.trim() ?? "",
+    executiveSummary: executiveSummaryRaw ? humanizeLimitationText(executiveSummaryRaw) : "",
     marketStateLabel: marketStateLabel(payload.marketState),
     sections,
     dataLimitations: (payload.dataLimitations ?? []).map(humanizeDataLimitation).filter(Boolean),
     confidenceLabel: analysisConfidenceLabel(payload.confidence),
     confidenceNote: CONFIDENCE_NOTE,
+    rawConfidence: typeof payload.confidence === "string" ? payload.confidence : undefined,
+    rawLimitationCodes: [...(payload.dataLimitations ?? [])].filter((item) => typeof item === "string"),
   };
 }
 

@@ -19,12 +19,16 @@ import { parseEchoInput } from './definitions/system-echo.agent.js';
 import { parseScriptGenerationInput } from './definitions/script-generation.agent.js';
 import { parseMarketIntelligenceInput } from './definitions/market-intelligence.agent.js';
 import { parseCampaignStrategyInput } from './definitions/campaign-strategy.agent.js';
+import { parseProductIntakeInput } from './definitions/product-intake.agent.js';
+import { parseMarketIntakeInput } from './definitions/market-intake.agent.js';
 import {
   ACCOUNT_POSITIONING_AGENT_ID,
   CAMPAIGN_STRATEGY_AGENT_ID,
   CONTENT_PLANNING_AGENT_ID,
   ECHO_AGENT_ID,
   MARKET_INTELLIGENCE_AGENT_ID,
+  PRODUCT_INTAKE_AGENT_ID,
+  MARKET_INTAKE_AGENT_ID,
   SCRIPT_GENERATION_AGENT_ID,
 } from './agent.types.js';
 import { PerformanceFeedbackService } from '../metrics/performance-feedback.service.js';
@@ -153,6 +157,12 @@ export class AgentsService {
     }
     if (agentId === CAMPAIGN_STRATEGY_AGENT_ID) {
       return parseCampaignStrategyInput(input);
+    }
+    if (agentId === PRODUCT_INTAKE_AGENT_ID) {
+      return parseProductIntakeInput(input);
+    }
+    if (agentId === MARKET_INTAKE_AGENT_ID) {
+      return parseMarketIntakeInput(input);
     }
     return input;
   }

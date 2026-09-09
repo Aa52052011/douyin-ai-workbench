@@ -1,6 +1,14 @@
 import { canGenerateScript } from "./content-planning.form";
+import {
+  buildTopicProductionItems,
+  getCurrentProductionTopic,
+  latestConfirmedPlan,
+  type TopicProductionItem,
+} from "./content-planning.production";
 import { parsePlanPayload } from "./content-planning.view";
 import type { ContentPlanRecord, ContentTopicRecord } from "./content-planning.types";
+import type { PublicationRecord } from "./publication.types";
+import type { VideoRecord } from "./video.types";
 import {
   SCRIPT_REQUIREMENTS_MAX,
   SCRIPT_TARGET_DURATIONS,
@@ -35,6 +43,86 @@ export function topicBelongsToPlan(plan: ContentPlanRecord | null, topicId: stri
   return topicsForPlan(plan).some((item) => item.id === topicId);
 }
 
+export type ScriptWorkspaceSelection = {
+  contentPlanId: string;
+  topicId: string;
+  warning: string | null;
+  viewingHistoricalPlan: boolean;
+  productionPlanId: string | null;
+};
+
+/**
+ * Resolve Script page focus:
+ * - valid query plan+topic → exact focus (historical confirmed allowed with flag)
+ * - missing/invalid query → latest confirmed + current production topic
+ * - draft query never becomes production SoT
+ */
+export function resolveScriptWorkspaceSelection(input: {
+  queryPlanId?: string | null;
+  queryTopicId?: string | null;
+  plans: ContentPlanRecord[];
+  scripts: ScriptRecord[];
+  videos?: VideoRecord[];
+  publications?: PublicationRecord[];
+}): ScriptWorkspaceSelection {
+  const usable = eligiblePlans(input.plans);
+  const productionPlan = latestConfirmedPlan(usable);
+  const productionPlanId = productionPlan?.id ?? null;
+
+  const queryPlan = input.queryPlanId ? usable.find((item) => item.id === input.queryPlanId) : null;
+  if (input.queryPlanId && input.queryTopicId && queryPlan && topicBelongsToPlan(queryPlan, input.queryTopicId)) {
+    const viewingHistoricalPlan = Boolean(productionPlanId && queryPlan.id !== productionPlanId);
+    return {
+      contentPlanId: queryPlan.id,
+      topicId: input.queryTopicId,
+      warning: null,
+      viewingHistoricalPlan,
+      productionPlanId,
+    };
+  }
+
+  if (input.queryPlanId || input.queryTopicId) {
+    const fallback = defaultProductionSelection(productionPlan, input.scripts, input.videos, input.publications);
+    return {
+      ...fallback,
+      warning: "所选内容计划或选题已不可用，已切换到当前生产计划。",
+      viewingHistoricalPlan: false,
+      productionPlanId,
+    };
+  }
+
+  const fallback = defaultProductionSelection(productionPlan, input.scripts, input.videos, input.publications);
+  return {
+    ...fallback,
+    warning: null,
+    viewingHistoricalPlan: false,
+    productionPlanId,
+  };
+}
+
+function defaultProductionSelection(
+  productionPlan: ContentPlanRecord | null,
+  scripts: ScriptRecord[],
+  videos: VideoRecord[] = [],
+  publications: PublicationRecord[] = [],
+): { contentPlanId: string; topicId: string } {
+  if (!productionPlan) {
+    return { contentPlanId: "", topicId: "" };
+  }
+  const items = buildTopicProductionItems({
+    plan: productionPlan,
+    scripts,
+    videos,
+    publications,
+  });
+  const current = getCurrentProductionTopic(items);
+  if (current) {
+    return { contentPlanId: productionPlan.id, topicId: current.topicId };
+  }
+  return { contentPlanId: productionPlan.id, topicId: "" };
+}
+
+/** Legacy query resolver: invalid query clears (no silent fallback). */
 export function resolveScriptQuery(
   contentPlanId: string | null | undefined,
   topicId: string | null | undefined,
@@ -90,6 +178,27 @@ export function scriptsForTopic(items: ScriptRecord[], contentPlanId: string, to
 
 export function latestScriptForTopic(items: ScriptRecord[], contentPlanId: string, topicId: string): ScriptRecord | null {
   return scriptsForTopic(items, contentPlanId, topicId)[0] ?? null;
+}
+
+/** Prefer confirmed/archived as production SoT; draft-only means still in progress. */
+export function productionScriptForTopic(
+  items: ScriptRecord[],
+  contentPlanId: string,
+  topicId: string,
+): ScriptRecord | null {
+  const rows = scriptsForTopic(items, contentPlanId, topicId);
+  return rows.find((item) => item.status === "CONFIRMED" || item.status === "ARCHIVED") ?? rows[0] ?? null;
+}
+
+export function hasUnconfirmedDraftAlongsideConfirmed(
+  items: ScriptRecord[],
+  contentPlanId: string,
+  topicId: string,
+): boolean {
+  const rows = scriptsForTopic(items, contentPlanId, topicId);
+  const hasConfirmed = rows.some((item) => item.status === "CONFIRMED" || item.status === "ARCHIVED");
+  const hasDraft = rows.some((item) => item.status === "DRAFT");
+  return hasConfirmed && hasDraft;
 }
 
 export function canEditScript(status?: string): boolean {
@@ -160,3 +269,5 @@ export function humanizeScriptError(error: unknown, action: "generate" | "save" 
 export function mountWriteOperations(): string[] {
   return [];
 }
+
+export type { TopicProductionItem };

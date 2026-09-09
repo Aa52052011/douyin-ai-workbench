@@ -10,21 +10,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Sources({ sources }: { sources: string[] }) {
-  if (sources.length === 0) {
-    return null;
-  }
-  return (
-    <p className="flex flex-wrap gap-2">
-      {sources.map((source) => (
-        <span key={source} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-          {source}
-        </span>
-      ))}
-    </p>
-  );
-}
-
 function ItemList({ items }: { items: StrategyItemView[] }) {
   return (
     <ul className="space-y-3">
@@ -35,7 +20,6 @@ function ItemList({ items }: { items: StrategyItemView[] }) {
             {item.priorityLabel ? <span className="ml-2 text-xs font-normal text-neutral-500">{item.priorityLabel}</span> : null}
           </p>
           {item.detail ? <p className="mt-1 text-neutral-600">{item.detail}</p> : null}
-          <Sources sources={item.sources} />
         </li>
       ))}
     </ul>
@@ -63,45 +47,22 @@ function MixList({ items }: { items: ContentMixItemView[] }) {
   );
 }
 
+/** L1 default strategy result — no raw evidence pills, no top-level limitation/confidence blocks. */
 export function CampaignStrategySummary({ view, archived }: { view: StrategyView; archived?: boolean }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4">
       {archived ? <p className="mb-3 text-sm text-neutral-600">已归档</p> : null}
 
-      {view.dataLimitations.length > 0 ? (
-        <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-          <h3 className="mb-2 text-sm font-medium">数据限制</h3>
-          <ul className="list-disc space-y-1 pl-5 text-sm">
-            {view.dataLimitations.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       {view.objective ? (
         <Section title="推广目标">
-          <p>主要目标：{view.objective.primaryObjective}</p>
-          <p>推广目标：{view.objective.businessGoal}</p>
-          {view.objective.conversionGoal ? <p>转化目标：{view.objective.conversionGoal}</p> : null}
-        </Section>
-      ) : null}
-
-      {view.targetAudience ? (
-        <Section title="目标受众">
-          <p>核心人群：{view.targetAudience.primary}</p>
-          {view.targetAudience.secondary ? <p>次要人群：{view.targetAudience.secondary}</p> : null}
-          {view.targetAudience.pains.length > 0 ? (
-            <p>痛点：{view.targetAudience.pains.join("、")}</p>
-          ) : null}
-          {view.targetAudience.motivations.length > 0 ? (
-            <p>动机：{view.targetAudience.motivations.join("、")}</p>
-          ) : null}
+          <p>{view.objective.primaryObjective}</p>
+          <p className="text-neutral-600">业务目标：{view.objective.businessGoal}</p>
+          {view.objective.conversionGoal ? <p className="text-neutral-600">转化目标：{view.objective.conversionGoal}</p> : null}
         </Section>
       ) : null}
 
       {view.positioning ? (
-        <Section title="推广定位">
+        <Section title="推荐策略 / 推广定位">
           <p>{view.positioning.accountRole}</p>
           <p className="text-neutral-600">{view.positioning.marketPosition}</p>
           {view.positioning.differentiation.length > 0 ? (
@@ -110,15 +71,26 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
         </Section>
       ) : null}
 
-      {view.valuePropositions.length > 0 ? (
-        <Section title="核心价值主张">
-          <ItemList items={view.valuePropositions} />
+      {view.targetAudience ? (
+        <Section title="目标受众">
+          <p>核心人群：{view.targetAudience.primary}</p>
+          {view.targetAudience.secondary ? <p>次要人群：{view.targetAudience.secondary}</p> : null}
+          {view.targetAudience.pains.length > 0 ? <p>痛点：{view.targetAudience.pains.join("、")}</p> : null}
+          {view.targetAudience.motivations.length > 0 ? (
+            <p>动机：{view.targetAudience.motivations.join("、")}</p>
+          ) : null}
         </Section>
       ) : null}
 
       {view.contentPillars.length > 0 ? (
-        <Section title="内容支柱">
+        <Section title="内容方向">
           <ItemList items={view.contentPillars} />
+        </Section>
+      ) : null}
+
+      {view.valuePropositions.length > 0 ? (
+        <Section title="核心价值主张">
+          <ItemList items={view.valuePropositions} />
         </Section>
       ) : null}
 
@@ -135,19 +107,14 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
       ) : null}
 
       {view.conversionPath ? (
-        <Section title="转化路径">
+        <Section title="关键执行建议">
           <p>认知：{view.conversionPath.awareness}</p>
           <p>考虑：{view.conversionPath.consideration}</p>
           <p>转化：{view.conversionPath.conversion}</p>
-        </Section>
-      ) : null}
-
-      {view.ctaStrategy && (view.ctaStrategy.principles.length > 0 || view.ctaStrategy.allowedDirections.length > 0) ? (
-        <Section title="CTA 原则">
-          {view.ctaStrategy.principles.length > 0 ? <p>原则：{view.ctaStrategy.principles.join("、")}</p> : null}
-          {view.ctaStrategy.allowedDirections.length > 0 ? (
-            <p>允许方向：{view.ctaStrategy.allowedDirections.join("、")}</p>
+          {view.ctaStrategy && view.ctaStrategy.principles.length > 0 ? (
+            <p>CTA 原则：{view.ctaStrategy.principles.join("、")}</p>
           ) : null}
+          {view.publishingCadence ? <p>发布节奏：{view.publishingCadence}</p> : null}
         </Section>
       ) : null}
 
@@ -155,7 +122,7 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
       (view.testingStrategy.hypotheses.length > 0 ||
         view.testingStrategy.variables.length > 0 ||
         view.testingStrategy.successSignals.length > 0) ? (
-        <Section title="测试策略">
+        <Section title="验证与测试">
           {view.testingStrategy.hypotheses.length > 0 ? (
             <div>
               <p className="text-neutral-500">待验证假设</p>
@@ -173,12 +140,6 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
         </Section>
       ) : null}
 
-      {view.publishingCadence ? (
-        <Section title="发布节奏建议">
-          <p>{view.publishingCadence}</p>
-        </Section>
-      ) : null}
-
       {view.risks.length > 0 ? (
         <Section title="风险与注意事项">
           <ul className="list-disc space-y-1 pl-5">
@@ -189,13 +150,6 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
               </li>
             ))}
           </ul>
-        </Section>
-      ) : null}
-
-      {view.confidenceLabel ? (
-        <Section title="可信度">
-          <p>{view.confidenceLabel}</p>
-          <p className="text-neutral-600">{view.confidenceNote}</p>
         </Section>
       ) : null}
     </div>

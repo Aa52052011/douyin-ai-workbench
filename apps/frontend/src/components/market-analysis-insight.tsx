@@ -1,5 +1,9 @@
 import { useState } from "react";
 import type { InsightItemView, InsightView } from "../lib/market-analysis.types";
+import { buildConfidenceActionView } from "../lib/confidence-action";
+import { ConfidenceActionCard } from "./confidence-action-card";
+import { ExplanationDetails } from "./explanation-details";
+import { campaignStrategyHref } from "../lib/market-analysis.view";
 
 function InsightItem({ item }: { item: InsightItemView }) {
   const [open, setOpen] = useState(false);
@@ -32,32 +36,37 @@ function InsightItem({ item }: { item: InsightItemView }) {
   );
 }
 
-export function MarketAnalysisInsightSummary({ view }: { view: InsightView }) {
+export function MarketAnalysisInsightSummary({
+  view,
+  projectId,
+}: {
+  view: InsightView;
+  projectId?: string;
+}) {
+  const confidence = projectId
+    ? buildConfidenceActionView({
+        confidence: view.rawConfidence,
+        limitationCodes: view.rawLimitationCodes,
+        projectId,
+        context: "market",
+      })
+    : null;
+
   return (
     <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-      {view.dataLimitations.length > 0 ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-          <h2 className="mb-2 text-sm font-medium">数据限制</h2>
-          <ul className="list-disc space-y-1 pl-5 text-sm text-neutral-800">
-            {view.dataLimitations.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       {view.executiveSummary ? (
-        <section className="border-t border-neutral-200 pt-4 first:border-t-0 first:pt-0">
+        <section>
           <h2 className="mb-2 text-sm font-medium">总结</h2>
           <p className="text-sm leading-6">{view.executiveSummary}</p>
         </section>
       ) : null}
 
-      {view.marketStateLabel ? (
-        <section className="border-t border-neutral-200 pt-4">
-          <h2 className="mb-2 text-sm font-medium">市场状态</h2>
-          <p className="text-sm">{view.marketStateLabel}</p>
-        </section>
+      {confidence ? (
+        <ConfidenceActionCard
+          view={confidence}
+          continueLabel="继续做推广策略"
+          continueHref={projectId ? campaignStrategyHref(projectId) : undefined}
+        />
       ) : null}
 
       {view.sections.map((section) => (
@@ -71,13 +80,22 @@ export function MarketAnalysisInsightSummary({ view }: { view: InsightView }) {
         </section>
       ))}
 
-      {view.confidenceLabel ? (
-        <section className="border-t border-neutral-200 pt-4">
-          <h2 className="mb-2 text-sm font-medium">可信度</h2>
-          <p className="text-sm">{view.confidenceLabel}</p>
-          <p className="mt-1 text-sm text-neutral-600">{view.confidenceNote}</p>
-        </section>
-      ) : null}
+      <ExplanationDetails summary="为什么这样判断">
+        {view.marketStateLabel ? <p>样本状态：{view.marketStateLabel}</p> : null}
+        {view.dataLimitations.length > 0 ? (
+          <div>
+            <p className="text-neutral-500">数据限制（说明）</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {view.dataLimitations.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p>本轮结论基于当前已确认的市场调研样本与产品信息。</p>
+        )}
+        {view.confidenceNote ? <p className="text-neutral-600">{view.confidenceNote}</p> : null}
+      </ExplanationDetails>
     </div>
   );
 }

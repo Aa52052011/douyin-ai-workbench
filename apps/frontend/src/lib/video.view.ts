@@ -115,6 +115,23 @@ export function humanizeVideoStage(stage?: string | null): string {
   }
 }
 
+export function humanizeFailedStage(stage?: string | null): string {
+  switch (stage) {
+    case "visual":
+      return "生成画面失败";
+    case "voice":
+      return "生成配音失败";
+    case "subtitle":
+      return "生成字幕失败";
+    case "compose":
+      return "视频合成失败";
+    case "finalize":
+      return "完成成片失败";
+    default:
+      return "视频生成失败";
+  }
+}
+
 export function humanizeCompletedStage(stage: VideoPipelineStage): string {
   switch (stage) {
     case "visual":
@@ -154,12 +171,40 @@ export function parseJobStages(output: unknown): {
   return { currentStage, completed, failed };
 }
 
+/** When job FAILED without explicit failed mark, infer from completed stages (legacy compose mislabel). */
+export function inferFailedStage(
+  videoStatus: string | undefined,
+  parsed: { currentStage?: string; completed: VideoPipelineStage[]; failed?: string },
+): string | undefined {
+  if (parsed.failed) {
+    return parsed.failed;
+  }
+  if (videoStatus !== "FAILED") {
+    return undefined;
+  }
+  const has = (key: VideoPipelineStage) => parsed.completed.includes(key);
+  if (has("visual") && has("voice") && has("subtitle") && !has("compose")) {
+    return "compose";
+  }
+  if (has("visual") && has("voice") && !has("subtitle")) {
+    return "subtitle";
+  }
+  if (has("visual") && !has("voice")) {
+    return "voice";
+  }
+  if (!has("visual")) {
+    return parsed.currentStage === "visual" ? "visual" : parsed.currentStage || "visual";
+  }
+  return parsed.currentStage;
+}
+
 export function videoStageViews(video: VideoRecord): VideoStageView[] {
   const parsed = parseJobStages(video.job?.output);
   const current = parsed.currentStage;
+  const failedStage = inferFailedStage(video.status, parsed);
   return VIDEO_PIPELINE_STAGES.map((key) => {
     let state: VideoStageView["state"] = "pending";
-    if (parsed.failed === key || (video.status === "FAILED" && current === key)) {
+    if (failedStage === key) {
       state = "failed";
     } else if (parsed.completed.includes(key) || video.status === "COMPLETED") {
       state = "done";
@@ -168,7 +213,12 @@ export function videoStageViews(video: VideoRecord): VideoStageView[] {
     }
     return {
       key,
-      label: state === "done" ? humanizeCompletedStage(key) : humanizeVideoStage(key),
+      label:
+        state === "done"
+          ? humanizeCompletedStage(key)
+          : state === "failed"
+            ? humanizeFailedStage(key)
+            : humanizeVideoStage(key),
       state,
     };
   });
@@ -178,20 +228,23 @@ export function backendProgressPercent(job?: VideoJobRecord | null): number | nu
   return typeof job?.progress === "number" ? job.progress : null;
 }
 
-export function failureMessage(error: unknown): string {
+export function failureMessage(error: unknown, failedStage?: string | null): string {
   if (!isRecord(error)) {
     return "";
   }
+  const message = asText(error.message);
+  if (failedStage === "compose" || /Compose provider is unavailable/i.test(message)) {
+    return "视频合成失败。系统已经保留之前生成的画面、配音和字幕，可以在问题恢复后继续合成。";
+  }
   const code = asText(error.code);
   if (code === "VIDEO_PROVIDER_FAILED" || code === "VIDEO_PLAN_INVALID" || code === "JOB_ENQUEUE_FAILED") {
-    return "视频生成失败";
+    return failedStage ? humanizeFailedStage(failedStage) : "视频生成失败";
   }
-  const message = asText(error.message);
   if (!message) {
     return "";
   }
   if (/stack|ffmpeg|api key|authorization|storageKey|stderr/i.test(message)) {
-    return "视频生成失败";
+    return failedStage ? humanizeFailedStage(failedStage) : "视频生成失败";
   }
   return message.length > 80 ? "视频生成失败" : message;
 }
@@ -201,6 +254,7 @@ export function videoView(video: VideoRecord): VideoView {
   const stages = videoStageViews(video);
   const parsed = parseJobStages(video.job?.output);
   const current = parsed.currentStage;
+  const failedStage = inferFailedStage(video.status, parsed);
   return {
     title: video.scriptTitle || "视频",
     statusLabel: videoStatusLabel(display),
@@ -211,14 +265,14 @@ export function videoView(video: VideoRecord): VideoView {
       display === "COMPLETED"
         ? "视频已完成"
         : display === "FAILED"
-          ? "视频生成失败"
+          ? humanizeFailedStage(failedStage)
           : humanizeVideoStage(current) || "正在准备视频",
     stages,
     progressPercent: backendProgressPercent(video.job),
     startedAtLabel: formatVideoTime(video.job?.startedAt),
     completedAtLabel: formatVideoTime(video.job?.completedAt),
-    failedStageLabel: display === "FAILED" ? humanizeVideoStage(parsed.failed || current) : "",
-    failureMessage: display === "FAILED" ? failureMessage(video.job?.error) || "视频生成失败" : "",
+    failedStageLabel: display === "FAILED" ? humanizeFailedStage(failedStage) : "",
+    failureMessage: display === "FAILED" ? failureMessage(video.job?.error, failedStage) || "视频生成失败" : "",
   };
 }
 

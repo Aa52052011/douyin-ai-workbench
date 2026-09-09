@@ -187,9 +187,10 @@ export default function MarketAnalysisPage() {
           />
           <MarketAnalysisResearchSummary summary={selectedResearchSummary(selected)} frozenBriefNote={frozenBriefNote(selected)} />
 
-          {sufficiency === "LIMITED" ? (
+          {sufficiency === "LIMITED" || sufficiency === "NONE" ? (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              当前样本有限，分析结果会更保守。
+              {qualityWarning ??
+                "目前市场信息较少，本轮分析会更多依赖你的产品信息和已确认的研究方向，结论可信度会相对较低。"}
             </p>
           ) : null}
 
@@ -232,7 +233,7 @@ export default function MarketAnalysisPage() {
                   重新分析
                 </button>
               </div>
-              {qualityWarning && sufficiency === "LIMITED" ? (
+              {qualityWarning && (sufficiency === "LIMITED" || sufficiency === "NONE") ? (
                 <p className="text-sm text-neutral-600">{qualityWarning}</p>
               ) : null}
               <label className="block text-sm">
@@ -246,7 +247,7 @@ export default function MarketAnalysisPage() {
                   placeholder="例如：竞品内容方向、关键词机会、用户需求"
                 />
               </label>
-              <MarketAnalysisInsightSummary view={currentView} />
+              <MarketAnalysisInsightSummary view={currentView} projectId={projectId} />
             </div>
           ) : null}
 

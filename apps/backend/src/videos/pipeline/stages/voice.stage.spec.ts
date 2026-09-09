@@ -32,7 +32,10 @@ describe('VoiceGenerationStage', () => {
           }),
           findFirst: vi.fn(),
         },
-        assetLink: { create: vi.fn(async () => ({})) },
+        assetLink: {
+          create: vi.fn(async () => ({})),
+          findMany: vi.fn(async () => []),
+        },
       },
       storage: { delete: vi.fn(), exists: vi.fn() },
       job: {

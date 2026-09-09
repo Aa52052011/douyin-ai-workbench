@@ -221,6 +221,8 @@ export function strategyView(payload: CampaignStrategyOutputRecord): StrategyVie
     dataLimitations: (payload.dataLimitations ?? []).map(humanizeStrategyLimitation).filter(Boolean),
     confidenceLabel: strategyConfidenceLabel(payload.confidence),
     confidenceNote: STRATEGY_CONFIDENCE_NOTE,
+    rawConfidence: typeof payload.confidence === "string" ? payload.confidence : undefined,
+    rawLimitationCodes: [...(payload.dataLimitations ?? [])].filter((item) => typeof item === "string"),
   };
 }
 

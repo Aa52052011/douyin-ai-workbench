@@ -7,6 +7,7 @@ import {
   type ProjectNextAction,
   type ProjectStageMap,
 } from "../lib/project-next-action";
+import { projectPlatformLabel } from "../lib/project-platform";
 
 export function ProjectCard({
   project,
@@ -17,7 +18,7 @@ export function ProjectCard({
   stages?: ProjectStageMap;
   nextAction?: ProjectNextAction;
 }) {
-  const meta = [project.industry, project.platform].filter(Boolean).join(" · ");
+  const meta = [project.industry, `目标平台：${projectPlatformLabel(project.platform)}`].filter(Boolean).join(" · ");
   return (
     <article className="rounded-xl border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">

@@ -1,11 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { ConfidenceActionCard } from "../../../../../../components/confidence-action-card";
+import { ContentPlanningCurrentFocus } from "../../../../../../components/content-planning-current-focus";
 import { ContentPlanningForm } from "../../../../../../components/content-planning-form";
 import { ContentPlanningHistory } from "../../../../../../components/content-planning-history";
-import { ContentPlanningTopics } from "../../../../../../components/content-planning-topics";
+import { ContentPlanningWeekOverview } from "../../../../../../components/content-planning-week-overview";
 import { EmptyState } from "../../../../../../components/empty-state";
+import { ExplanationDetails } from "../../../../../../components/explanation-details";
 import { PageHeader } from "../../../../../../components/page-header";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { listCampaignStrategies } from "../../../../../../lib/campaign-strategy.api";
@@ -13,11 +17,13 @@ import type { CampaignStrategyRecord } from "../../../../../../lib/campaign-stra
 import {
   defaultPositioningRunId,
   formatStrategyTime,
+  humanizeStrategyLimitation,
   parseStrategyOutput,
   positioningOptions,
   strategyConfidenceLabel,
   strategyStatusLabel,
 } from "../../../../../../lib/campaign-strategy.view";
+import { buildConfidenceActionView } from "../../../../../../lib/confidence-action";
 import {
   archiveContentPlan,
   confirmContentPlan,
@@ -37,12 +43,28 @@ import {
   resolveStrategyQuery,
   usableStrategies,
 } from "../../../../../../lib/content-planning.form";
+import {
+  buildTopicProductionItems,
+  findNextProductionAction,
+  getCurrentProductionTopic,
+  isSevenDaySingleTrack,
+  latestConfirmedPlan,
+  latestDraftPlan,
+  nextActionHref,
+  summarizeProductionProgress,
+} from "../../../../../../lib/content-planning.production";
 import type { ContentPlanRecord, PlanningFormState } from "../../../../../../lib/content-planning.types";
-import { parsedPlanView, planHistoryViews } from "../../../../../../lib/content-planning.view";
+import { formatPlanTime, parsedPlanView, planHistoryViews, planStatusLabel } from "../../../../../../lib/content-planning.view";
 import { listPositioningRuns } from "../../../../../../lib/positioning.api";
 import { completedPositioningRecords } from "../../../../../../lib/positioning.form";
 import type { PositioningRecord } from "../../../../../../lib/positioning.types";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
+import { listPublications } from "../../../../../../lib/publication.api";
+import type { PublicationRecord } from "../../../../../../lib/publication.types";
+import { listScripts } from "../../../../../../lib/script.api";
+import type { ScriptRecord } from "../../../../../../lib/script.types";
+import { listVideos } from "../../../../../../lib/video.api";
+import type { VideoRecord } from "../../../../../../lib/video.types";
 
 function ContentPlansPageInner() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -53,6 +75,9 @@ function ContentPlansPageInner() {
   const [positioning, setPositioning] = useState<PositioningRecord[]>([]);
   const [strategies, setStrategies] = useState<CampaignStrategyRecord[]>([]);
   const [plans, setPlans] = useState<ContentPlanRecord[]>([]);
+  const [scripts, setScripts] = useState<ScriptRecord[]>([]);
+  const [videos, setVideos] = useState<VideoRecord[]>([]);
+  const [publications, setPublications] = useState<PublicationRecord[]>([]);
   const [form, setForm] = useState<PlanningFormState>(emptyPlanningForm(project.platform || "douyin"));
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,7 +87,9 @@ function ContentPlansPageInner() {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [archiveAsk, setArchiveAsk] = useState(false);
+  const [regenerateAsk, setRegenerateAsk] = useState(false);
   const [strategyByPlanId, setStrategyByPlanId] = useState<Record<string, string>>({});
+  const [userSelectedTopicId, setUserSelectedTopicId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken || !projectId) {
@@ -73,7 +100,10 @@ function ContentPlansPageInner() {
       listPositioningRuns(accessToken, projectId),
       listCampaignStrategies(accessToken, projectId),
       listContentPlans(accessToken, projectId),
-    ]).then(([positioningResult, strategyResult, planResult]) => {
+      listScripts(accessToken, projectId),
+      listVideos(accessToken, projectId),
+      listPublications(accessToken, projectId),
+    ]).then(([positioningResult, strategyResult, planResult, scriptResult, videoResult, publicationResult]) => {
       if (cancelled) {
         return;
       }
@@ -93,6 +123,9 @@ function ContentPlansPageInner() {
         setPlans([]);
         setPlanError("无法加载内容计划。");
       }
+      setScripts(scriptResult.status === "fulfilled" ? scriptResult.value : []);
+      setVideos(videoResult.status === "fulfilled" ? videoResult.value : []);
+      setPublications(publicationResult.status === "fulfilled" ? publicationResult.value : []);
       const resolved = resolveStrategyQuery(queryStrategyId, nextStrategies);
       setQueryWarning(resolved.warning);
       setForm({
@@ -110,7 +143,35 @@ function ContentPlansPageInner() {
   }, [accessToken, projectId, project.platform, queryStrategyId]);
 
   const latest = latestPlan(plans);
-  const latestView = latest ? parsedPlanView(latest) : null;
+  const productionPlan = latestConfirmedPlan(plans);
+  const draftPlan = latestDraftPlan(plans);
+  const pendingNewDraft =
+    Boolean(draftPlan && canConfirmPlan(draftPlan.status) && productionPlan && draftPlan.id !== productionPlan.id);
+
+  // Production SoT = latest confirmed. Solo draft (no confirmed yet) is shown for confirm preview.
+  const displayPlan = productionPlan ?? draftPlan ?? latest;
+  const displayView = displayPlan ? parsedPlanView(displayPlan) : null;
+
+  const productionItems = useMemo(() => {
+    if (!displayPlan) return [];
+    return buildTopicProductionItems({
+      plan: displayPlan,
+      scripts,
+      videos,
+      publications,
+    });
+  }, [displayPlan, scripts, videos, publications]);
+
+  const progress = summarizeProductionProgress(productionItems);
+  const currentTopic = getCurrentProductionTopic(productionItems);
+  const nextAction = findNextProductionAction(productionItems);
+  const focusTopic =
+    productionItems.find((item) => item.topicId === userSelectedTopicId) ??
+    currentTopic ??
+    productionItems[0] ??
+    null;
+  const isSevenDay = displayPlan ? isSevenDaySingleTrack(displayPlan, productionItems.length) : false;
+
   const usable = usableStrategies(strategies);
   const strategyOptions = [...usable]
     .sort((a, b) => b.version - a.version)
@@ -130,7 +191,21 @@ function ContentPlansPageInner() {
       };
     });
   const selectedStrategy = strategies.find((item) => item.id === form.strategyId);
-  const currentStrategyLabel = latest ? strategyByPlanId[latest.id] : undefined;
+  const planStrategy = selectedStrategy;
+  const planStrategyParsed = planStrategy ? parseStrategyOutput(planStrategy.payload) : null;
+  const planningConfidence =
+    projectId && planStrategyParsed
+      ? buildConfidenceActionView({
+          confidence: planStrategyParsed.confidence,
+          limitationCodes: planStrategyParsed.dataLimitations,
+          projectId,
+          context: "planning",
+        })
+      : null;
+  const currentStrategyLabel = displayPlan ? strategyByPlanId[displayPlan.id] : undefined;
+  const confirmedMode = Boolean(displayPlan && canGenerateScript(displayPlan.status));
+  // Only the plan currently on screen awaiting confirm — not a sibling draft banner case.
+  const pendingConfirmMode = Boolean(displayPlan && canConfirmPlan(displayPlan.status));
 
   async function generate() {
     if (!accessToken || !projectId || pending || !canGeneratePlan(form)) {
@@ -147,6 +222,7 @@ function ContentPlansPageInner() {
         : "未使用推广策略";
       setStrategyByPlanId((current) => ({ ...current, [created.id]: strategyLabel }));
       setEditing(false);
+      setRegenerateAsk(false);
     } catch (error) {
       setActionError(humanizePlanningError(error, "generate"));
     } finally {
@@ -155,13 +231,19 @@ function ContentPlansPageInner() {
   }
 
   async function confirm() {
-    if (!accessToken || !latest || pending || !canConfirmPlan(latest.status)) {
+    const target =
+      pendingNewDraft && draftPlan
+        ? draftPlan
+        : displayPlan && canConfirmPlan(displayPlan.status)
+          ? displayPlan
+          : latest;
+    if (!accessToken || !target || pending || !canConfirmPlan(target.status)) {
       return;
     }
     setPending(true);
     setActionError(null);
     try {
-      await confirmContentPlan(accessToken, latest.id);
+      await confirmContentPlan(accessToken, target.id);
       setPlans(await listContentPlans(accessToken, projectId));
     } catch (error) {
       setActionError(humanizePlanningError(error, "confirm"));
@@ -171,13 +253,14 @@ function ContentPlansPageInner() {
   }
 
   async function archive() {
-    if (!accessToken || !latest || pending || !canArchivePlan(latest.status)) {
+    const target = productionPlan ?? latest;
+    if (!accessToken || !target || pending || !canArchivePlan(target.status)) {
       return;
     }
     setPending(true);
     setActionError(null);
     try {
-      await archiveContentPlan(accessToken, latest.id);
+      await archiveContentPlan(accessToken, target.id);
       setPlans(await listContentPlans(accessToken, projectId));
       setArchiveAsk(false);
     } catch (error) {
@@ -187,11 +270,16 @@ function ContentPlansPageInner() {
     }
   }
 
+  const confirmFocusHref =
+    confirmedMode && productionPlan && nextAction.kind !== "COMPLETE"
+      ? nextActionHref(projectId, productionPlan.id, nextAction)
+      : null;
+
   return (
     <div>
       <PageHeader
-        title="内容计划"
-        description="根据账号定位和推广策略，生成接下来一段时间的内容选题和发布方向。"
+        title={isSevenDay ? "本期 7 天内容规划" : "本期内容规划"}
+        description="围绕当前推广策略，为你安排这一周期的内容方向。你可以按顺序制作，也可以查看任意一条。"
         breadcrumb={`项目 / ${project.name} / 内容计划`}
       />
 
@@ -223,15 +311,6 @@ function ContentPlansPageInner() {
 
       {!loading && !loadError && positioning.length > 0 ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-            <h2 className="mb-2 text-sm font-medium">本次计划依据</h2>
-            <p>账号定位：{positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning ?? "请选择"}</p>
-            <p>推广策略：{form.strategyId ? `版本 ${selectedStrategy?.version ?? ""}` : "未使用"}</p>
-            <p>计划周期：{form.planningDays} 天</p>
-            <p>每天数量：{form.postsPerDay} 条</p>
-            <p>补充要求：{form.additionalRequirements.trim() || "未填写"}</p>
-          </section>
-
           {queryWarning ? (
             <p className="text-sm text-red-600" role="alert">
               {queryWarning}
@@ -270,41 +349,191 @@ function ContentPlansPageInner() {
             />
           ) : null}
 
-          {!editing && latest && !latestView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
+          {!editing && displayPlan && !displayView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
 
-          {!editing && latest && latestView ? (
+          {!editing && displayPlan && displayView ? (
             <div className="space-y-4">
+              {pendingNewDraft && draftPlan ? (
+                <section className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm">
+                  <p className="font-medium text-neutral-900">有一份待确认的新规划（版本 {draftPlan.version}）</p>
+                  <p className="mt-1 text-neutral-700">
+                    当前生产仍使用已确认计划。确认新规划后，它才会成为本期生产计划；旧计划历史会保留。
+                  </p>
+                  <button
+                    className="mt-2 rounded-md bg-neutral-950 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                    type="button"
+                    disabled={pending}
+                    onClick={() => void confirm()}
+                  >
+                    确认新规划
+                  </button>
+                </section>
+              ) : null}
+
+              <section className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="font-medium text-neutral-950">{displayView.title}</h2>
+                    {displayView.summary ? <p className="mt-1 text-neutral-600">{displayView.summary}</p> : null}
+                    <p className="mt-2 text-xs text-neutral-500">
+                      {[
+                        `版本 ${displayPlan.version}`,
+                        planStatusLabel(displayPlan.status),
+                        formatPlanTime(displayPlan.createdAt),
+                        `${progress.topicCount} 条选题`,
+                        confirmedMode ? progress.summaryLabel : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  {confirmedMode ? (
+                    <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-700">已确认</span>
+                  ) : null}
+                </div>
+                {planningConfidence?.level === "low" ? (
+                  <p className="mt-2 text-xs text-amber-900">本轮为验证型内容计划 · 仍可继续制作脚本</p>
+                ) : null}
+              </section>
+
+              <ContentPlanningWeekOverview
+                items={productionItems}
+                progress={progress}
+                isSevenDay={isSevenDay}
+                currentTopicId={confirmedMode ? currentTopic?.topicId : null}
+                selectedTopicId={focusTopic?.topicId}
+                onSelect={setUserSelectedTopicId}
+              />
+
+              {focusTopic && displayPlan ? (
+                <ContentPlanningCurrentFocus
+                  projectId={projectId}
+                  planId={displayPlan.id}
+                  topic={focusTopic}
+                  action={nextAction}
+                  canScript={canGenerateScript(displayPlan.status)}
+                  isCurrentProduction={confirmedMode && focusTopic.topicId === currentTopic?.topicId}
+                />
+              ) : null}
+
+              {planningConfidence ? (
+                <ConfidenceActionCard
+                  view={planningConfidence}
+                  continueLabel={
+                    confirmedMode && confirmFocusHref
+                      ? nextAction.kind === "SCRIPT"
+                        ? "开始制作脚本"
+                        : nextAction.label
+                      : undefined
+                  }
+                  continueHref={confirmFocusHref ?? undefined}
+                />
+              ) : null}
+
+              <ExplanationDetails summary="为什么这样规划">
+                <p>
+                  当前推广策略：
+                  {planStrategy
+                    ? `版本 ${planStrategy.version}${
+                        planStrategyParsed?.objective?.primaryObjective
+                          ? ` · ${planStrategyParsed.objective.primaryObjective}`
+                          : ""
+                      }`
+                    : currentStrategyLabel || "未绑定策略"}
+                </p>
+                <p>
+                  账号定位：
+                  {positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning ??
+                    "已选择的账号定位"}
+                </p>
+                <p>
+                  计划目标：{displayPlan.planningDays ?? displayView.days ?? form.planningDays} 天 · 每天{" "}
+                  {displayPlan.postsPerDay ?? form.postsPerDay} 条选题
+                </p>
+                {planStrategyParsed?.dataLimitations?.length ? (
+                  <p>
+                    市场分析限制：
+                    {planStrategyParsed.dataLimitations.map(humanizeStrategyLimitation).join("；")}
+                    。本轮更适合作为验证型计划。
+                  </p>
+                ) : (
+                  <p>市场分析限制：当前未额外标注限制，仍建议用首轮内容验证。</p>
+                )}
+                <p>历史表现反馈：若已有发布数据，下一轮计划会更能贴合真实表现；当前不阻塞继续做脚本。</p>
+              </ExplanationDetails>
+
               <div className="flex flex-wrap gap-2">
-                {canConfirmPlan(latest.status) ? (
+                {pendingConfirmMode ? (
                   <button
                     className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white disabled:opacity-50"
                     type="button"
                     disabled={pending}
                     onClick={() => void confirm()}
                   >
-                    确认计划
+                    确认本期内容规划
                   </button>
                 ) : null}
-                <button className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending} onClick={() => setEditing(true)}>
-                  重新生成
+                {confirmedMode && confirmFocusHref ? (
+                  <Link className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={confirmFocusHref}>
+                    {nextAction.kind === "COMPLETE" ? nextAction.label : nextAction.label}
+                  </Link>
+                ) : null}
+                <button
+                  className="rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-700"
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setRegenerateAsk(true)}
+                  title="会基于当前策略重新生成一套新的本期内容规划；现有计划历史会保留。"
+                >
+                  重新规划本周内容
                 </button>
-                {canArchivePlan(latest.status) ? (
-                  <button className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending} onClick={() => setArchiveAsk(true)}>
+                {productionPlan && canArchivePlan(productionPlan.status) ? (
+                  <button
+                    className="rounded-md border px-4 py-2 text-sm"
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setArchiveAsk(true)}
+                  >
                     归档计划
                   </button>
                 ) : null}
               </div>
-              {canConfirmPlan(latest.status) ? (
-                <p className="text-sm text-neutral-600">确认后，可以从选题生成脚本。</p>
+
+              {pendingConfirmMode ? (
+                <p className="text-sm text-neutral-600">确认后，将直接进入「开始制作第 1 条脚本」，无需再回脚本页找计划。</p>
               ) : null}
-              {latest.status === "CONFIRMED" ? (
-                <p className="text-sm text-neutral-600">从下面选择一个选题生成脚本。</p>
+
+              {regenerateAsk ? (
+                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm">
+                  <p>会基于当前策略重新生成一套新的本期内容规划；现有计划历史会保留，不会覆盖旧版本。</p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
+                      type="button"
+                      onClick={() => {
+                        setRegenerateAsk(false);
+                        setEditing(true);
+                      }}
+                    >
+                      继续重新规划
+                    </button>
+                    <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setRegenerateAsk(false)}>
+                      取消
+                    </button>
+                  </div>
+                </div>
               ) : null}
+
               {archiveAsk ? (
                 <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm">
                   <p>归档后，这份计划不再作为当前生产计划使用。</p>
                   <div className="mt-2 flex gap-2">
-                    <button className="rounded-md bg-neutral-950 px-3 py-1.5 text-white" type="button" disabled={pending} onClick={() => void archive()}>
+                    <button
+                      className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => void archive()}
+                    >
                       确认归档
                     </button>
                     <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setArchiveAsk(false)}>
@@ -313,14 +542,6 @@ function ContentPlansPageInner() {
                   </div>
                 </div>
               ) : null}
-              <ContentPlanningTopics
-                view={latestView}
-                projectId={projectId}
-                planId={latest.id}
-                canScript={canGenerateScript(latest.status)}
-                strategyLabel={currentStrategyLabel}
-                archived={latest.status === "ARCHIVED"}
-              />
             </div>
           ) : null}
 

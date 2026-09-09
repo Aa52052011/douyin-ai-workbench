@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { CampaignStrategyForm } from "../../../../../components/campaign-strategy-form";
 import { CampaignStrategyHistory } from "../../../../../components/campaign-strategy-history";
 import { CampaignStrategySummary } from "../../../../../components/campaign-strategy-summary";
+import { ConfidenceActionCard } from "../../../../../components/confidence-action-card";
 import { EmptyState } from "../../../../../components/empty-state";
+import { ExplanationDetails } from "../../../../../components/explanation-details";
 import { PageHeader } from "../../../../../components/page-header";
 import { useAuth } from "../../../../../lib/auth-context";
 import { generateCampaignStrategy, listCampaignStrategies } from "../../../../../lib/campaign-strategy.api";
@@ -31,6 +33,7 @@ import {
   positioningOptions,
   strategyHistoryViews,
 } from "../../../../../lib/campaign-strategy.view";
+import { buildConfidenceActionView } from "../../../../../lib/confidence-action";
 import { listMarketInsights } from "../../../../../lib/market-analysis.api";
 import type { MarketInsightRecord } from "../../../../../lib/market-analysis.types";
 import { listMarketResearch } from "../../../../../lib/market-research.api";
@@ -145,6 +148,15 @@ export default function CampaignStrategyPage() {
   const latest = latestStrategy(strategies);
   const latestView = latest ? parsedStrategyView(latest) : null;
   const planningReady = Boolean(latest && latestView && isStrategyUsable(latest.status));
+  const strategyConfidence =
+    latestView && projectId
+      ? buildConfidenceActionView({
+          confidence: latestView.rawConfidence,
+          limitationCodes: latestView.rawLimitationCodes,
+          projectId,
+          context: "strategy",
+        })
+      : null;
   const missing = missingDependencyState({ briefExists: Boolean(brief), hasPositioning: positioning.length > 0 });
   const noMarketHint = !form.marketInsightId;
   const researchOptions = [...researches]
@@ -241,14 +253,6 @@ export default function CampaignStrategyPage() {
 
       {!loading && !loadError && !missing ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-            <h2 className="mb-2 text-sm font-medium">本次策略依据</h2>
-            <p>产品信息：{brief?.payload.productName ?? "已填写"}{brief?.version ? ` · 版本 ${brief.version}` : ""}</p>
-            <p>账号定位：{positioning[0]?.output.accountPositioning ?? "已完成"}</p>
-            <p>市场分析：{form.marketInsightId ? "将使用所选市场分析" : "未使用"}</p>
-            <p>本次目标：{form.userGoal.trim() || "未填写"}</p>
-          </section>
-
           {pending ? (
             <p className="text-sm text-neutral-700" aria-live="polite">
               AI 正在生成推广策略…
@@ -289,20 +293,69 @@ export default function CampaignStrategyPage() {
 
           {!editing && latest && latestView ? (
             <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
+              <CampaignStrategySummary view={latestView} archived={latest.status === "ARCHIVED"} />
+
+              {strategyConfidence ? (
+                <ConfidenceActionCard
+                  view={strategyConfidence}
+                  continueLabel={planningReady ? "用于生成内容计划" : undefined}
+                  continueHref={planningReady ? contentPlansHref(projectId, latest.id) : undefined}
+                />
+              ) : null}
+
+              <ExplanationDetails summary="为什么这样建议">
+                <p>
+                  基于你的产品信息：
+                  {brief?.payload.productName
+                    ? `「${brief.payload.productName}${
+                        brief.payload.targetAudience ? `面向${brief.payload.targetAudience}` : ""
+                      }${brief.payload.businessGoal ? `，希望${brief.payload.businessGoal}` : ""}」。`
+                    : "已确认的产品信息。"}
+                </p>
+                <p>
+                  结合账号定位：
+                  {positioning[0]?.output.accountPositioning
+                    ? `「${positioning[0].output.accountPositioning}」。`
+                    : "已完成的账号定位。"}
+                </p>
+                <p>
+                  结合市场调研：
+                  {form.marketInsightId
+                    ? latestView.dataLimitations.length > 0
+                      ? `当前样本有限（${latestView.dataLimitations.slice(0, 2).join("；")}），因此策略偏向验证型打法。`
+                      : "已结合所选市场分析。"
+                    : "未使用市场分析，策略更偏产品与定位驱动的验证型打法。"}
+                </p>
+                {form.userGoal.trim() ? <p>本次目标：{form.userGoal.trim()}</p> : null}
+                {latestView.confidenceLabel ? (
+                  <p className="text-neutral-600">
+                    {latestView.confidenceLabel}。{latestView.confidenceNote}
+                  </p>
+                ) : null}
+              </ExplanationDetails>
+
+              <div className="flex flex-wrap items-center gap-3">
                 {planningReady ? (
                   <Link className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={contentPlansHref(projectId, latest.id)}>
-                    用于内容计划
+                    用于生成内容计划
                   </Link>
                 ) : null}
-                <button className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending} onClick={openRegenerate}>
+                <button
+                  className="rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-700"
+                  type="button"
+                  disabled={pending}
+                  onClick={openRegenerate}
+                  title="重新生成策略会重新制定本轮推广方向，可能影响后续内容计划。"
+                >
                   重新生成策略
                 </button>
               </div>
+              <p className="text-xs text-neutral-500">
+                重新生成策略会重新制定本轮推广方向，可能影响后续内容计划。不会因为重新生成计划/脚本/视频而自动重跑策略。
+              </p>
               {latest.status === "ARCHIVED" ? (
                 <p className="text-sm text-neutral-600">这份策略已归档，不能用于内容计划。</p>
               ) : null}
-              <CampaignStrategySummary view={latestView} archived={latest.status === "ARCHIVED"} />
             </div>
           ) : null}
 

@@ -130,6 +130,9 @@ export type InsightView = {
   dataLimitations: string[];
   confidenceLabel: string;
   confidenceNote: string;
+  /** Raw payload fields for deterministic ConfidenceActionView (not shown as-is). */
+  rawConfidence?: string;
+  rawLimitationCodes?: string[];
 };
 
 export type ResearchOptionView = {

@@ -19,6 +19,12 @@ export type ProjectNextAction = {
   id: ProjectStageKey | "next-plan";
   label: string;
   href: string;
+  /** Supporting sentence under the title (optional). */
+  description?: string;
+  /** Button text; defaults to label when omitted. */
+  ctaLabel?: string;
+  /** Non-blocking auxiliary tip (e.g. unconfirmed improve draft). */
+  note?: string;
 };
 
 export type ProjectOverviewSummary = {
@@ -59,6 +65,14 @@ export type ProjectStatusFacts = {
   publishedPublicationId?: string | null;
   hasMetrics: boolean | null;
   summary: ProjectOverviewSummary;
+  /**
+   * Client-only Intake draft presence. Never used by evaluateProjectStages.
+   * Formal stage completion still depends only on ProductBrief / MarketResearch.
+   */
+  productIntakeDraftPresent?: boolean;
+  marketIntakeDraftPresent?: boolean;
+  productIntakeImproveActive?: boolean;
+  marketIntakeImproveActive?: boolean;
 };
 
 export const STAGE_CHECKLIST: Array<{
@@ -209,16 +223,59 @@ export function groupProgress(stages: ProjectStageMap): Array<{ label: string; d
 export function getProjectNextAction(projectId: string, facts: ProjectStatusFacts): ProjectNextAction {
   const href = (path: string) => `/dashboard/projects/${projectId}${path}`;
   if (facts.productPresent !== true) {
-    return { id: "product", label: "填写产品信息", href: href("/product") };
+    // Market draft must not jump ahead of ProductBrief.
+    if (facts.productIntakeDraftPresent === true) {
+      return {
+        id: "product",
+        label: "继续完善产品信息",
+        description: "你已经开始整理产品信息，继续完成后即可进入账号定位。",
+        ctaLabel: "继续完善",
+        href: href("/product"),
+      };
+    }
+    return {
+      id: "product",
+      label: "开始填写产品信息",
+      ctaLabel: "开始填写",
+      href: href("/product"),
+    };
   }
   if (facts.positioningValid !== true) {
-    return { id: "positioning", label: "生成账号定位", href: href("/positioning") };
+    return {
+      id: "positioning",
+      label: "生成账号定位",
+      href: href("/positioning"),
+      ...(facts.productIntakeImproveActive === true
+        ? { note: "有一份未确认的产品信息补充，不影响当前正式产品信息。" }
+        : {}),
+    };
   }
   if (facts.researchPresent !== true) {
-    return { id: "research", label: "导入市场数据", href: href("/market/research") };
+    if (facts.marketIntakeDraftPresent === true) {
+      return {
+        id: "research",
+        label: "继续市场调研",
+        description: "你已经开始整理市场调研素材，可以继续完善并确认后进入市场分析。",
+        ctaLabel: "继续调研",
+        href: href("/market/research"),
+      };
+    }
+    return {
+      id: "research",
+      label: "开始市场调研",
+      ctaLabel: "开始调研",
+      href: href("/market/research"),
+    };
   }
   if (facts.insightPresent !== true) {
-    return { id: "analysis", label: "开始市场分析", href: href("/market/analysis") };
+    return {
+      id: "analysis",
+      label: "开始市场分析",
+      href: href("/market/analysis"),
+      ...(facts.marketIntakeImproveActive === true
+        ? { note: "有一份未确认的补充调研，不影响当前已确认的市场调研。" }
+        : {}),
+    };
   }
   if (facts.strategyUsable !== true) {
     return { id: "strategy", label: "生成推广策略", href: href("/strategy") };

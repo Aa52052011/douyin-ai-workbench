@@ -46,6 +46,8 @@ confidence: "LOW" | "MEDIUM" | "HIGH"
 evidenceCoverage: { evidenceItemsAvailable, evidenceItemsReferenced, coverageRate }
 
 evidenceKind 只允许 DATA_BACKED | INFERRED | INSUFFICIENT_DATA。
-LIMITED 时 marketState 必须是 LIMITED_SIGNAL 或 INSUFFICIENT_DATA，confidence 只能 LOW/MEDIUM，dataLimitations 不能为空。`,
+LIMITED 时 marketState 必须是 LIMITED_SIGNAL 或 INSUFFICIENT_DATA，confidence 只能 LOW/MEDIUM，dataLimitations 不能为空，且应包含 LIMITED_SAMPLE。
+样本极少（例如仅 1 条关键词）时：优先输出研究缺口与保守含义，禁止扩写成竞品/热门内容/行业增长事实；未出现的 evidence 类别数组可为空。
+只能引用输入 MarketEvidence 里真实出现的 evidence code；没有对应证据时用 evidenceKind=INSUFFICIENT_DATA，不要编造 code。`,
   userPromptTemplate: `{{inputJson}}`,
 };

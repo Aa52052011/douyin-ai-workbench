@@ -11,6 +11,7 @@ import { useAuth } from "../../lib/auth-context";
 import { loadProjectStatus } from "../../lib/load-project-status";
 import type { ProjectNextAction, ProjectStageMap } from "../../lib/project-next-action";
 import type { Project } from "../../lib/types";
+import { withIntakeDraftNextAction } from "../../lib/with-intake-draft-next-action";
 
 const RECENT_LIMIT = 5;
 
@@ -39,7 +40,10 @@ export default function DashboardPage() {
         const loaded = await Promise.all(
           recent.map(async (project) => {
             try {
-              const snapshot = await loadProjectStatus(accessToken, project.id);
+              const snapshot = withIntakeDraftNextAction(
+                project.id,
+                await loadProjectStatus(accessToken, project.id),
+              );
               return { project: snapshot.project, stages: snapshot.stages, nextAction: snapshot.nextAction };
             } catch {
               return { project };

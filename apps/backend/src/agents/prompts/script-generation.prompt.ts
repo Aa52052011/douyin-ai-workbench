@@ -38,13 +38,24 @@ productionNotes: string[]
 13. 不编造数据、热搜、播放量、粉丝数。
 14. 不得声称内容正在热门，除非输入里明确给了趋势。
 15. sequence 从 1 连续递增，sections 1–12 条。
-16. productionNotes 至少 1 条，写拍摄或字幕注意，不是旁白。`,
+16. productionNotes 至少 1 条，写拍摄或字幕注意，不是旁白。
+17. 当前脚本属于一整套连续内容规划（见 contentPlanContext）。role=CURRENT 是本条；PREVIOUS 是已安排的前序；UPCOMING 是后续预留。
+18. 与前序内容避免重复：不要复制已完成脚本的相同开场、相同核心论点、相同 CTA 表达、相同案例结构；可保持账号语气与品牌一致性。
+19. 不要把 UPCOMING（未来天）的核心主题提前讲完；本条独立可看懂，也不要把用户尚未看过的未来内容当作已知前提。
+20. 若有 previousScriptSummaries，只作避重与连贯参考，不要复述全文。
+21. 若有 strategyContext，保持与推广目标、受众、内容方向一致。`,
   userPromptTemplate: `目标时长：{{targetDuration}}
 平台：{{platform}}
 内容风格：{{contentStyle}}
 规划标题：{{planTitle}}
 额外要求：{{requirements}}
-选题 JSON：
+本周内容规划上下文 JSON：
+{{contentPlanContext}}
+已完成脚本摘要 JSON（仅 confirmed）：
+{{previousScriptSummaries}}
+推广策略摘要 JSON：
+{{strategyContext}}
+当前选题 JSON：
 {{topic}}
 账号定位 JSON：
 {{positioning}}`,

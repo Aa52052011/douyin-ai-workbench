@@ -50,6 +50,9 @@ export const scriptGenerationDefinition: AgentDefinition = {
       planTitle: { type: 'string', maxLength: 200 },
       targetDuration: { type: 'integer', enum: [...SCRIPT_TARGET_DURATION_VALUES] },
       requirements: { type: 'string', maxLength: 2000 },
+      contentPlanContext: { type: 'object' },
+      previousScriptSummaries: { type: 'array' },
+      strategyContext: { type: 'object' },
     },
   },
   outputSchema: {
@@ -100,6 +103,9 @@ export function parseScriptGenerationInput(input: unknown): ScriptGenerationInpu
       planTitle: optionalString(input, 'planTitle', LIMITS.planTitle),
       targetDuration,
       requirements: optionalString(input, 'requirements', LIMITS.requirements),
+      contentPlanContext: optionalObject(input, 'contentPlanContext') as ScriptGenerationInput['contentPlanContext'],
+      previousScriptSummaries: optionalArray(input, 'previousScriptSummaries') as ScriptGenerationInput['previousScriptSummaries'],
+      strategyContext: optionalObject(input, 'strategyContext') as ScriptGenerationInput['strategyContext'],
     };
   } catch (error) {
     if (error instanceof AgentError && error.code === ErrorCode.AGENT_INVALID_OUTPUT) {
@@ -280,6 +286,26 @@ function optionalString(
     return undefined;
   }
   return requiredString(record, key, max);
+}
+
+function optionalObject(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  if (!(key in record) || record[key] === undefined || record[key] === null) {
+    return undefined;
+  }
+  if (!isRecord(record[key])) {
+    throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
+  }
+  return record[key];
+}
+
+function optionalArray(record: Record<string, unknown>, key: string): unknown[] | undefined {
+  if (!(key in record) || record[key] === undefined || record[key] === null) {
+    return undefined;
+  }
+  if (!Array.isArray(record[key])) {
+    throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
+  }
+  return record[key];
 }
 
 function requireString(record: Record<string, unknown>, key: string): string {

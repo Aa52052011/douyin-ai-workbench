@@ -106,3 +106,13 @@ export const CAMPAIGN_STRATEGY_AGENT_ID = 'campaign.strategy';
 export const CAMPAIGN_STRATEGY_AGENT_VERSION = 'v1';
 export const CAMPAIGN_STRATEGY_PROMPT = 'campaign.strategy';
 export const CAMPAIGN_STRATEGY_TIMEOUT_MS = 120_000;
+
+export const PRODUCT_INTAKE_AGENT_ID = 'product.intake';
+export const PRODUCT_INTAKE_AGENT_VERSION = 'v1';
+export const PRODUCT_INTAKE_PROMPT = 'product.intake';
+export const PRODUCT_INTAKE_TIMEOUT_MS = 60_000;
+
+export const MARKET_INTAKE_AGENT_ID = 'market.intake';
+export const MARKET_INTAKE_AGENT_VERSION = 'v1';
+export const MARKET_INTAKE_PROMPT = 'market.intake';
+export const MARKET_INTAKE_TIMEOUT_MS = 60_000;

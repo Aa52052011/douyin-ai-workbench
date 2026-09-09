@@ -19,6 +19,7 @@ import { createVideoPoller, isVideoPollActive, isVideoPollTerminal } from "./vid
 import type { VideoRecord } from "./video.types";
 import {
   backendProgressPercent,
+  humanizeFailedStage,
   humanizeVideoStage,
   parseVideoRecord,
   videoHistoryViews,
@@ -120,6 +121,34 @@ function run() {
   assert.equal(humanizeVideoStage("finalize"), "正在完成成片");
   assert.equal(humanizeVideoStage(""), "正在准备视频");
   assert.equal(humanizeVideoStage("production_plan"), "");
+  assert.equal(humanizeFailedStage("compose"), "视频合成失败");
+  assert.equal(humanizeFailedStage("subtitle"), "生成字幕失败");
+
+  // compose fail mislabeled as subtitle currentStage → inferred compose
+  {
+    const failedCompose = video({
+      id: "v-compose-fail",
+      status: "FAILED",
+      job: {
+        status: "FAILED",
+        progress: 70,
+        error: { code: "VIDEO_PROVIDER_FAILED", message: "Compose provider is unavailable" },
+        output: {
+          currentStage: "subtitle",
+          stages: {
+            visual: { status: "completed", assetIds: ["i1"] },
+            voice: { status: "completed", assetIds: ["a1"] },
+            subtitle: { status: "completed", assetIds: ["s1"] },
+          },
+        },
+      },
+    });
+    const view = videoView(failedCompose);
+    assert.equal(view.failedStageLabel, "视频合成失败");
+    assert.equal(view.failureMessage.includes("保留"), true);
+    assert.equal(view.stages.find((s) => s.key === "subtitle")?.state, "done");
+    assert.equal(view.stages.find((s) => s.key === "compose")?.state, "failed");
+  }
 
   // 9 no fake percent if backend absent
   assert.equal(backendProgressPercent(null), null);

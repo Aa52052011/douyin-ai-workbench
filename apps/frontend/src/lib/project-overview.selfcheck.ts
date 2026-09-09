@@ -299,7 +299,7 @@ function run() {
   const empty = buildProjectStages(emptyStatusFacts());
   assert.equal(empty.product, "current");
   assert.equal(empty.script, "not_started");
-  assert.equal(getProjectNextAction(projectId, emptyStatusFacts()).label, "填写产品信息");
+  assert.equal(getProjectNextAction(projectId, emptyStatusFacts()).label, "开始填写产品信息");
 
   const groups = groupProgress(fullStages);
   assert.deepEqual(
@@ -309,6 +309,99 @@ function run() {
   assert.equal(statusUnavailableLabel(), "状态暂不可用");
   assert.equal(INSIGHT_PROBE_LIMIT, 5);
   assert.equal(METRICS_PROBE_LIMIT, 3);
+
+  // --- Step 12.12I Intake Draft next-action matrix (CASE 1–8) ---
+  // CASE 1: no brief, no draft → start product
+  const case1 = getProjectNextAction(projectId, facts({ productPresent: false }));
+  assert.equal(case1.label, "开始填写产品信息");
+  assert.equal(case1.id, "product");
+
+  // CASE 2: no brief, product draft → continue product
+  const case2 = getProjectNextAction(
+    projectId,
+    facts({ productPresent: false, productIntakeDraftPresent: true, marketIntakeDraftPresent: true }),
+  );
+  assert.equal(case2.label, "继续完善产品信息");
+  assert.equal(case2.ctaLabel, "继续完善");
+  assert.equal(case2.id, "product");
+  // ProductBrief prerequisite: market draft must not win
+  assert.notEqual(case2.id, "research");
+
+  // CASE 3: brief confirmed, no positioning — formal object wins over stale product draft
+  const case3 = getProjectNextAction(
+    projectId,
+    facts({
+      productPresent: true,
+      positioningValid: false,
+      productIntakeDraftPresent: true,
+      productIntakeImproveActive: true,
+    }),
+  );
+  assert.equal(case3.label, "生成账号定位");
+  assert.equal(case3.id, "positioning");
+  assert.ok(case3.note);
+  assert.equal(evaluateProjectStages(facts({ productPresent: true, productIntakeDraftPresent: true })).product, "completed");
+
+  // CASE 4: ready for research, no market draft
+  const case4 = getProjectNextAction(
+    projectId,
+    facts({ productPresent: true, positioningValid: true, researchPresent: false }),
+  );
+  assert.equal(case4.label, "开始市场调研");
+
+  // CASE 5: market draft → continue research
+  const case5 = getProjectNextAction(
+    projectId,
+    facts({
+      productPresent: true,
+      positioningValid: true,
+      researchPresent: false,
+      marketIntakeDraftPresent: true,
+    }),
+  );
+  assert.equal(case5.label, "继续市场调研");
+  assert.equal(case5.ctaLabel, "继续调研");
+
+  // CASE 6: research confirmed → analysis; stale market draft does not downgrade stage
+  const case6Facts = facts({
+    productPresent: true,
+    positioningValid: true,
+    researchPresent: true,
+    insightPresent: false,
+    marketIntakeDraftPresent: true,
+  });
+  const case6 = getProjectNextAction(projectId, case6Facts);
+  assert.equal(case6.label, "开始市场分析");
+  assert.equal(evaluateProjectStages(case6Facts).research, "completed");
+
+  // CASE 7: research confirmed + active improve draft → analysis with auxiliary note
+  const case7 = getProjectNextAction(
+    projectId,
+    facts({
+      productPresent: true,
+      positioningValid: true,
+      researchPresent: true,
+      insightPresent: false,
+      marketIntakeImproveActive: true,
+    }),
+  );
+  assert.equal(case7.label, "开始市场分析");
+  assert.match(case7.note ?? "", /未确认的补充调研/);
+  assert.equal(evaluateProjectStages(facts({ researchPresent: true, marketIntakeImproveActive: true })).research, "completed");
+
+  // CASE 8: full loop next action unaffected by intake drafts
+  const case8 = getProjectNextAction(
+    projectId,
+    facts({
+      ...fullLoop(),
+      productIntakeDraftPresent: true,
+      marketIntakeDraftPresent: true,
+      productIntakeImproveActive: true,
+      marketIntakeImproveActive: true,
+    }),
+  );
+  assert.equal(case8.id, "next-plan");
+  assert.equal(case8.label, "创建下一期内容计划");
 
   void probeReadableInsight;
   void probePublicationMetrics;

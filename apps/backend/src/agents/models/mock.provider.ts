@@ -4,6 +4,8 @@ import {
   CAMPAIGN_STRATEGY_AGENT_ID,
   CONTENT_PLANNING_AGENT_ID,
   MARKET_INTELLIGENCE_AGENT_ID,
+  MARKET_INTAKE_AGENT_ID,
+  PRODUCT_INTAKE_AGENT_ID,
   SCRIPT_GENERATION_AGENT_ID,
 } from '../agent.types.js';
 import { MOCK_ACCOUNT_POSITIONING_OUTPUT } from '../definitions/account-positioning.fixture.js';
@@ -13,6 +15,8 @@ import {
   extractCampaignStrategyFromPrompt,
 } from '../definitions/content-planning.fixture.js';
 import { buildMockMarketInsightText } from '../definitions/market-intelligence.fixture.js';
+import { buildMockMarketIntakeText } from '../definitions/market-intake.fixture.js';
+import { buildMockProductIntakeText } from '../definitions/product-intake.fixture.js';
 import { buildMockScriptOutput } from '../definitions/script-generation.fixture.js';
 import type { ScriptTargetDuration } from '../definitions/script-generation.types.js';
 import type { ModelGenerateRequest, ModelGenerateResult, ModelProvider } from './model.types.js';
@@ -80,6 +84,18 @@ function mockText(request: ModelGenerateRequest): string {
     request.task === CAMPAIGN_STRATEGY_AGENT_ID
   ) {
     return buildMockCampaignStrategyText(request.prompt);
+  }
+  if (
+    request.agentId === PRODUCT_INTAKE_AGENT_ID ||
+    request.task === PRODUCT_INTAKE_AGENT_ID
+  ) {
+    return buildMockProductIntakeText(request.prompt);
+  }
+  if (
+    request.agentId === MARKET_INTAKE_AGENT_ID ||
+    request.task === MARKET_INTAKE_AGENT_ID
+  ) {
+    return buildMockMarketIntakeText(request.prompt);
   }
   return request.prompt;
 }

@@ -15,6 +15,7 @@ import { PublishingModule } from './publishing/publishing.module.js';
 import { MetricsModule } from './metrics/metrics.module.js';
 import { MarketModule } from './market/market.module.js';
 import { CampaignModule } from './campaign/campaign.module.js';
+import { IntakeModule } from './intake/intake.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CampaignModule } from './campaign/campaign.module.js';
     MetricsModule,
     MarketModule,
     CampaignModule,
+    IntakeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

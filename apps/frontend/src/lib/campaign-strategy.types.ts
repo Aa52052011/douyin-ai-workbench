@@ -148,6 +148,8 @@ export type StrategyView = {
   dataLimitations: string[];
   confidenceLabel: string;
   confidenceNote: string;
+  rawConfidence?: string;
+  rawLimitationCodes?: string[];
 };
 
 export type StrategyHistoryItemView = {

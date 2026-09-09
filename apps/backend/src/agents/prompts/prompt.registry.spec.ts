@@ -65,12 +65,17 @@ describe('PromptRegistry', () => {
       contentStyle: '',
       planTitle: '',
       requirements: '',
+      contentPlanContext: '{}',
+      previousScriptSummaries: '[]',
+      strategyContext: '{}',
       topic: '{}',
       positioning: '{}',
     });
     expect(rendered.version).toBe('v1');
     expect(rendered.systemPrompt).toContain('只输出一个 JSON 对象');
+    expect(rendered.systemPrompt).toContain('连续内容规划');
     expect(rendered.userPrompt).toContain('目标时长：30');
+    expect(rendered.userPrompt).toContain('本周内容规划上下文 JSON');
   });
 
   it('loads market.intelligence:v1', () => {
@@ -97,6 +102,57 @@ describe('PromptRegistry', () => {
     expect(rendered.systemPrompt).toContain('confidenceCeiling');
     expect(rendered.systemPrompt).not.toContain('每天 9:00');
     expect(rendered.userPrompt).toContain('productBrief');
+  });
+
+  it('loads product.intake:v1', () => {
+    const registry = new PromptRegistry();
+    const rendered = registry.render('product.intake', 'v1', {
+      mode: 'product',
+      locale: 'zh-CN',
+      improvingExisting: 'false',
+      currentDraftJson: '{}',
+      missingRequiredFields: '["productName"]',
+      nextPriorityFields: '["productName"]',
+      missingRequiredLabels: '["产品名称"]',
+      optionalLaterFields: '["tone"]',
+      recentConversationText: '（无）',
+      latestUserMessage: '你好',
+    });
+    expect(rendered.version).toBe('v1');
+    expect(rendered.systemPrompt).toContain('产品信息采集助手');
+    expect(rendered.systemPrompt).toContain('Extract > Infer');
+    expect(rendered.systemPrompt).toContain('不要编造 productName');
+    expect(rendered.systemPrompt).toContain('不是：账号定位师');
+    expect(rendered.systemPrompt).toContain('Priority 1');
+    expect(rendered.systemPrompt).toContain('businessGoal:');
+    expect(rendered.userPrompt).toContain('最新用户消息');
+    expect(rendered.userPrompt).toContain('系统计算的缺失必要字段');
+    expect(rendered.userPrompt).toContain('你好');
+  });
+
+  it('loads market.intake:v1', () => {
+    const registry = new PromptRegistry();
+    const rendered = registry.render('market.intake', 'v1', {
+      mode: 'market',
+      locale: 'zh-CN',
+      noDataAllowed: 'true',
+      improvingExisting: 'false',
+      hasMarketMaterial: 'false',
+      userAcknowledgedLimitedData: 'false',
+      alreadyFilledFields: '[]',
+      nextPriorityFields: '["keywords"]',
+      confirmedProductBriefJson: '{}',
+      currentDraftJson: '{}',
+      recentConversationText: '（无）',
+      latestUserMessage: '我想研究关键词',
+    });
+    expect(rendered.version).toBe('v1');
+    expect(rendered.systemPrompt).toContain('市场调研素材采集助手');
+    expect(rendered.systemPrompt).toContain('Market Intelligence');
+    expect(rendered.systemPrompt).toContain('播放量');
+    expect(rendered.systemPrompt).toContain('低数据');
+    expect(rendered.userPrompt).toContain('我想研究关键词');
+    expect(rendered.userPrompt).toContain('是否已有市场素材');
   });
 
   it('aligns campaign.strategy evidence refs with validator allowlists', () => {

@@ -9,6 +9,11 @@ import {
   concatNarration,
   parseTargetDuration,
 } from '../agents/definitions/script-generation.agent.js';
+import {
+  buildCompactContentPlanContext,
+  buildCompactPreviousScriptSummaries,
+  buildCompactStrategyContext,
+} from '../agents/definitions/script-generation.context.js';
 import type { ScriptOutput } from '../agents/definitions/script-generation.types.js';
 import type { AccountPositioningOutput } from '../agents/definitions/account-positioning.types.js';
 import type { ContentPlanOutput, ContentTopic } from '../agents/definitions/content-planning.types.js';
@@ -80,6 +85,46 @@ export class ScriptsService {
     const targetDuration = parseTargetDuration(input.targetDuration, topic.estimatedDuration);
     const positioning = plan.positioningSnapshot as AccountPositioningOutput;
 
+    const siblingScripts = await this.prisma.script.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        workspaceId,
+        contentPlanId: plan.id,
+        deletedAt: null,
+      },
+      orderBy: [{ topicId: 'asc' }, { version: 'asc' }],
+      select: {
+        topicId: true,
+        status: true,
+        title: true,
+        payload: true,
+        topicSnapshot: true,
+      },
+    });
+
+    const contentPlanContext = buildCompactContentPlanContext({
+      planTitle: plan.title,
+      payload,
+      currentTopicId: topic.id,
+    });
+    const previousScriptSummaries = buildCompactPreviousScriptSummaries({
+      topics: payload?.topics ?? [topic],
+      currentTopicId: topic.id,
+      scripts: siblingScripts,
+    });
+    // CampaignStrategy has no soft-delete column — do not filter deletedAt (12.12Q-A).
+    const strategyRow = await this.prisma.campaignStrategy.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        workspaceId,
+        projectId: plan.projectId,
+        status: { in: ['READY', 'CONFIRMED', 'ARCHIVED'] },
+      },
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+      select: { payload: true },
+    });
+    const strategyContext = buildCompactStrategyContext(strategyRow?.payload);
+
     const run = await this.agents.execute(
       auth,
       {
@@ -96,6 +141,9 @@ export class ScriptsService {
           planTitle: plan.title,
           targetDuration,
           requirements: input.requirements,
+          contentPlanContext,
+          previousScriptSummaries,
+          ...(strategyContext ? { strategyContext } : {}),
         },
       },
       meta,

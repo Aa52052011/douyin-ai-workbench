@@ -58,10 +58,12 @@ export class VideoGenerationService {
         failStage: mockFailStage(readRequirements(job.input)),
         failVisualAfter: mockFailVisualAfter(readRequirements(job.input)),
       };
+      await this.beginStage(ctx, 'visual');
       const visualIds = await this.visual.run(ctx);
       await this.checkpoint(ctx, 'visual', { assetIds: visualIds }, PROGRESS.visual);
       this.assertHeartbeat(heartbeat);
 
+      await this.beginStage(ctx, 'voice');
       const voice = await this.voice.run(ctx);
       await this.checkpoint(
         ctx,
@@ -80,10 +82,16 @@ export class VideoGenerationService {
       );
       this.assertHeartbeat(heartbeat);
 
-      const subtitleId = await this.subtitle.run(ctx, voice.durationExact ?? voice.duration);
+      await this.beginStage(ctx, 'subtitle');
+      const subtitleId = await this.subtitle.run(
+        ctx,
+        voice.durationExact ?? voice.duration,
+        voice.assetId,
+      );
       await this.checkpoint(ctx, 'subtitle', { assetIds: [subtitleId] }, PROGRESS.subtitle);
       this.assertHeartbeat(heartbeat);
 
+      await this.beginStage(ctx, 'compose');
       const composed = await this.compose.run(ctx, {
         voiceDuration: voice.duration,
         failToken: readRequirements(job.input),
@@ -97,6 +105,7 @@ export class VideoGenerationService {
       );
       this.assertHeartbeat(heartbeat);
 
+      await this.beginStage(ctx, 'finalize');
       if (ctx.failStage === 'finalize') {
         throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
       }
@@ -140,6 +149,36 @@ export class VideoGenerationService {
     } finally {
       heartbeat.stop();
     }
+  }
+
+  private async beginStage(ctx: StageContext, stage: PipelineStageName | 'finalize') {
+    const output = asPipelineOutput(ctx.job.output);
+    output.currentStage = stage;
+    if (stage !== 'finalize') {
+      const existing = output.stages[stage];
+      if (!existing || existing.status !== 'completed') {
+        output.stages[stage] = {
+          status: 'running',
+          assetIds: existing?.assetIds ?? [],
+          startedAt: existing?.startedAt ?? new Date().toISOString(),
+          provider: existing?.provider,
+          model: existing?.model,
+          scenes: existing?.scenes,
+        };
+      }
+    }
+    const progress =
+      stage === 'visual'
+        ? 5
+        : stage === 'voice'
+          ? PROGRESS.visual
+          : stage === 'subtitle'
+            ? PROGRESS.voice
+            : stage === 'compose'
+              ? PROGRESS.subtitle
+              : PROGRESS.compose;
+    await this.jobs.mergeOutput(ctx.job.tenantId, ctx.job.id, output as never, progress);
+    ctx.job = await this.jobs.getById(ctx.job.tenantId, ctx.job.id);
   }
 
   private async checkpoint(

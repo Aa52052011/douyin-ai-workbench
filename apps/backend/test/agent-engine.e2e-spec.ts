@@ -71,7 +71,9 @@ describe('Agent Engine (e2e)', () => {
       'account.positioning',
       'campaign.strategy',
       'content.planning',
+      'market.intake',
       'market.intelligence',
+      'product.intake',
       'script.generation',
       'system.echo',
     ]);

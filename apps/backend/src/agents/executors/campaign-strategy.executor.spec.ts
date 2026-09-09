@@ -86,4 +86,39 @@ describe('campaign.strategy executor', () => {
       ),
     ).rejects.toMatchObject({ code: ErrorCode.AGENT_INVALID_OUTPUT });
   });
+
+  it('repairs once after invalid first output then completes', async () => {
+    const input = buildTestCampaignStrategySnapshot();
+    const forged = buildMockCampaignStrategyOutput(input);
+    forged.valuePropositions = [
+      {
+        proposition: '编造洞察',
+        priority: 'high',
+        evidenceBasis: [{ type: 'MARKET_INSIGHT', ref: 'NOT_REAL' }],
+      },
+    ];
+    const valid = buildMockCampaignStrategyOutput(input);
+    let calls = 0;
+    const executor = executorWith(async () => {
+      calls += 1;
+      return {
+        text: JSON.stringify(calls === 1 ? forged : valid),
+        provider: 'mock',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, estimatedCost: 0 },
+      };
+    });
+    const result = await executor.execute(
+      {
+        requestId: context.requestId,
+        agentId: 'campaign.strategy',
+        agentVersion: 'v1',
+        context,
+        input,
+      },
+      5000,
+    );
+    expect(calls).toBe(2);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.output?.version).toBe('v1');
+  });
 });

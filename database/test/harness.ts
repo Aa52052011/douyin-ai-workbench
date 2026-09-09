@@ -109,8 +109,18 @@ async function startEmbeddedPostgres(): Promise<string> {
 }
 
 export async function startTestDatabase(): Promise<string> {
-  if (process.env.DATABASE_URL && (await canConnect("127.0.0.1", 5432))) {
-    return process.env.DATABASE_URL;
+  if (process.env.DATABASE_URL) {
+    try {
+      const normalized = process.env.DATABASE_URL.replace(/^postgresql:/i, 'http:');
+      const parsed = new URL(normalized);
+      const host = parsed.hostname || '127.0.0.1';
+      const port = Number(parsed.port || 5432);
+      if (await canConnect(host, port)) {
+        return process.env.DATABASE_URL;
+      }
+    } catch {
+      // fall through to discovery
+    }
   }
 
   if (await canConnect("127.0.0.1", 5432)) {

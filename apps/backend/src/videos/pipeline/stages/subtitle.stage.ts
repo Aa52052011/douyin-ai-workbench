@@ -6,18 +6,42 @@ import { MockSubtitleProvider } from '../../../media/providers/mock-subtitle.pro
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
 import { reusableAssetIds } from '../asset-reuse.js';
 import { buildSubtitleCues } from '../srt.js';
+import { findReusableSubtitleAsset } from '../subtitle-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
 
 @Injectable()
 export class SubtitleGenerationStage {
   constructor(private readonly subtitles: MockSubtitleProvider) {}
 
-  async run(ctx: StageContext, voiceDuration: number): Promise<string> {
+  async run(ctx: StageContext, voiceDuration: number, voiceAssetId?: string): Promise<string> {
     const output = asPipelineOutput(ctx.job.output);
     const reused = await reusableAssetIds(ctx, output.stages.subtitle?.assetIds);
     if (reused?.[0]) {
       return reused[0];
     }
+
+    const voiceId = voiceAssetId ?? output.stages.voice?.assetIds?.[0];
+    if (voiceId) {
+      const crossJob = await findReusableSubtitleAsset(ctx, {
+        assetId: voiceId,
+        durationExact: voiceDuration,
+      });
+      if (crossJob) {
+        await ctx.prisma.assetLink.create({
+          data: {
+            tenantId: ctx.job.tenantId,
+            workspaceId: ctx.job.workspaceId,
+            projectId: ctx.job.projectId,
+            assetId: crossJob.id,
+            videoId: ctx.plan.videoId,
+            jobId: ctx.job.id,
+            role: AssetLinkRole.VIDEO_SUBTITLE,
+          },
+        });
+        return crossJob.id;
+      }
+    }
+
     if (ctx.failStage === 'subtitle') {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
     }
@@ -53,6 +77,8 @@ export class SubtitleGenerationStage {
           stage: 'subtitle',
           generationVersion: ctx.generationVersion,
           format: 'srt',
+          ...(voiceId ? { voiceAssetId: voiceId } : {}),
+          voiceDurationExact: voiceDuration,
         },
       },
     });

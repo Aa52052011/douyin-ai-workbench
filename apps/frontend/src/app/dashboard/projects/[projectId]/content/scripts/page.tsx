@@ -8,12 +8,22 @@ import { PageHeader } from "../../../../../../components/page-header";
 import { ScriptDetail } from "../../../../../../components/script-detail";
 import { ScriptEditor } from "../../../../../../components/script-editor";
 import { ScriptHistory } from "../../../../../../components/script-history";
+import { ScriptProductionQueue } from "../../../../../../components/script-production-queue";
 import { ScriptSourceForm } from "../../../../../../components/script-source-form";
+import { WorkspacePageShell } from "../../../../../../components/workspace-page-shell";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { listContentPlans } from "../../../../../../lib/content-planning.api";
+import {
+  buildTopicProductionItems,
+  findNextProductionAction,
+  getCurrentProductionTopic,
+  summarizeProductionProgress,
+} from "../../../../../../lib/content-planning.production";
 import { planStatusLabel } from "../../../../../../lib/content-planning.view";
 import type { ContentPlanRecord, ContentTopicRecord } from "../../../../../../lib/content-planning.types";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
+import { listPublications } from "../../../../../../lib/publication.api";
+import type { PublicationRecord } from "../../../../../../lib/publication.types";
 import {
   archiveScript,
   confirmScript,
@@ -30,10 +40,11 @@ import {
   contentPlansHref,
   eligiblePlans,
   emptyScriptForm,
+  hasUnconfirmedDraftAlongsideConfirmed,
   hintDurationFromTopic,
   humanizeScriptError,
   latestScriptForTopic,
-  resolveScriptQuery,
+  resolveScriptWorkspaceSelection,
   scriptsForTopic,
   topicsForPlan,
   videoHref,
@@ -43,11 +54,12 @@ import {
   parseScriptPayload,
   parsedScriptView,
   parseTopicSnapshot,
-  recentScriptViews,
   scriptHistoryViews,
   scriptStatusLabel,
   topicSourceView,
 } from "../../../../../../lib/script.view";
+import { listVideos } from "../../../../../../lib/video.api";
+import type { VideoRecord } from "../../../../../../lib/video.types";
 
 function ContentScriptsPageInner() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -58,6 +70,8 @@ function ContentScriptsPageInner() {
   const { accessToken } = useAuth();
   const [plans, setPlans] = useState<ContentPlanRecord[]>([]);
   const [scripts, setScripts] = useState<ScriptRecord[]>([]);
+  const [videos, setVideos] = useState<VideoRecord[]>([]);
+  const [publications, setPublications] = useState<PublicationRecord[]>([]);
   const [form, setForm] = useState<ScriptFormState>(emptyScriptForm());
   const [selectedScriptId, setSelectedScriptId] = useState("");
   const [draft, setDraft] = useState<ScriptPayloadRecord | null>(null);
@@ -66,52 +80,78 @@ function ContentScriptsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [queryWarning, setQueryWarning] = useState<string | null>(null);
+  const [viewingHistoricalPlan, setViewingHistoricalPlan] = useState(false);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [archiveAsk, setArchiveAsk] = useState(false);
+  const [justConfirmed, setJustConfirmed] = useState(false);
+  const [isCompactQueue, setIsCompactQueue] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsCompactQueue(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     if (!accessToken || !projectId) {
       return;
     }
     let cancelled = false;
-    void Promise.allSettled([listContentPlans(accessToken, projectId), listScripts(accessToken, projectId)]).then(
-      ([planResult, scriptResult]) => {
-        if (cancelled) {
-          return;
-        }
-        if (planResult.status === "rejected") {
-          setLoadError("无法加载脚本所需信息，请刷新重试。");
-          setLoading(false);
-          return;
-        }
-        const nextPlans = planResult.value;
-        const usable = eligiblePlans(nextPlans);
-        const resolved = resolveScriptQuery(queryPlanId, queryTopicId, usable);
-        const selectedPlan = usable.find((item) => item.id === resolved.contentPlanId) ?? null;
-        const selectedTopic = topicsForPlan(selectedPlan).find((item) => item.id === resolved.topicId);
-        setPlans(nextPlans);
-        setQueryWarning(resolved.warning);
-        setForm({
-          ...emptyScriptForm(),
-          contentPlanId: resolved.contentPlanId,
-          topicId: resolved.topicId,
-          targetDuration: hintDurationFromTopic(selectedTopic?.estimatedDuration),
-        });
-        setSelectedScriptId("");
-        setEditing(false);
-        setDraft(null);
-        if (scriptResult.status === "fulfilled") {
-          setScripts(scriptResult.value);
-          setScriptError(null);
-        } else {
-          setScripts([]);
-          setScriptError("无法加载脚本。");
-        }
-        setLoadError(null);
+    void Promise.allSettled([
+      listContentPlans(accessToken, projectId),
+      listScripts(accessToken, projectId),
+      listVideos(accessToken, projectId),
+      listPublications(accessToken, projectId),
+    ]).then(([planResult, scriptResult, videoResult, publicationResult]) => {
+      if (cancelled) {
+        return;
+      }
+      if (planResult.status === "rejected") {
+        setLoadError("无法加载脚本所需信息，请刷新重试。");
         setLoading(false);
-      },
-    );
+        return;
+      }
+      const nextPlans = planResult.value;
+      const nextScripts = scriptResult.status === "fulfilled" ? scriptResult.value : [];
+      const nextVideos = videoResult.status === "fulfilled" ? videoResult.value : [];
+      const nextPublications = publicationResult.status === "fulfilled" ? publicationResult.value : [];
+      const resolved = resolveScriptWorkspaceSelection({
+        queryPlanId,
+        queryTopicId,
+        plans: nextPlans,
+        scripts: nextScripts,
+        videos: nextVideos,
+        publications: nextPublications,
+      });
+      const selectedPlan = eligiblePlans(nextPlans).find((item) => item.id === resolved.contentPlanId) ?? null;
+      const selectedTopic = topicsForPlan(selectedPlan).find((item) => item.id === resolved.topicId);
+      setPlans(nextPlans);
+      setScripts(nextScripts);
+      setVideos(nextVideos);
+      setPublications(nextPublications);
+      setQueryWarning(resolved.warning);
+      setViewingHistoricalPlan(resolved.viewingHistoricalPlan);
+      setForm({
+        ...emptyScriptForm(),
+        contentPlanId: resolved.contentPlanId,
+        topicId: resolved.topicId,
+        targetDuration: hintDurationFromTopic(selectedTopic?.estimatedDuration),
+      });
+      setSelectedScriptId("");
+      setEditing(false);
+      setDraft(null);
+      setJustConfirmed(false);
+      if (scriptResult.status === "fulfilled") {
+        setScriptError(null);
+      } else {
+        setScriptError("无法加载脚本。");
+      }
+      setLoadError(null);
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -121,12 +161,31 @@ function ContentScriptsPageInner() {
   const selectedPlan = usablePlans.find((item) => item.id === form.contentPlanId) ?? null;
   const topics = topicsForPlan(selectedPlan);
   const selectedTopic = topics.find((item) => item.id === form.topicId) ?? null;
-  const topicScripts = form.contentPlanId && form.topicId ? scriptsForTopic(scripts, form.contentPlanId, form.topicId) : [];
+
+  const productionItems = selectedPlan
+    ? buildTopicProductionItems({
+        plan: selectedPlan,
+        scripts,
+        videos,
+        publications,
+      })
+    : [];
+
+  const progress = summarizeProductionProgress(productionItems);
+  const currentProductionTopic = getCurrentProductionTopic(productionItems);
+  const nextAction = findNextProductionAction(productionItems);
+  const topicScripts =
+    form.contentPlanId && form.topicId ? scriptsForTopic(scripts, form.contentPlanId, form.topicId) : [];
   const current = resolveCurrentScript(scripts, form, selectedScriptId);
   const currentView = current ? parsedScriptView(current) : null;
   const currentPayload = current ? parseScriptPayload(current.payload) : null;
   const source = topicSourceView(selectedTopic);
-  const recent = recentScriptViews(scripts.filter((item) => !projectId || item.projectId === projectId || !item.projectId));
+  const draftBesideConfirmed =
+    form.contentPlanId && form.topicId
+      ? hasUnconfirmedDraftAlongsideConfirmed(scripts, form.contentPlanId, form.topicId)
+      : false;
+  const focusItem = productionItems.find((item) => item.topicId === form.topicId) ?? null;
+  const allScriptsDone = Boolean(selectedPlan && productionItems.length > 0 && !currentProductionTopic);
 
   function changeForm(next: ScriptFormState) {
     const plan = usablePlans.find((item) => item.id === next.contentPlanId) ?? null;
@@ -141,7 +200,17 @@ function ContentScriptsPageInner() {
       setEditing(false);
       setDraft(null);
       setArchiveAsk(false);
+      setJustConfirmed(false);
     }
+  }
+
+  function selectQueueTopic(topicId: string) {
+    const topic = topics.find((item) => item.id === topicId);
+    changeForm({
+      ...form,
+      topicId,
+      targetDuration: hintDurationFromTopic(topic?.estimatedDuration),
+    });
   }
 
   async function refreshScripts(preferId?: string) {
@@ -160,6 +229,7 @@ function ContentScriptsPageInner() {
     }
     setPending(true);
     setActionError(null);
+    setJustConfirmed(false);
     try {
       const created = await createScript(accessToken, form);
       await refreshScripts(created.id);
@@ -199,6 +269,7 @@ function ContentScriptsPageInner() {
     try {
       const updated = await confirmScript(accessToken, current.id);
       await refreshScripts(updated.id);
+      setJustConfirmed(true);
     } catch (error) {
       setActionError(humanizeScriptError(error, "confirm"));
     } finally {
@@ -223,31 +294,25 @@ function ContentScriptsPageInner() {
     }
   }
 
-  function openRecent(itemId: string) {
-    const record = scripts.find((item) => item.id === itemId);
-    if (!record) {
+  function goNextScriptTopic() {
+    const next = getCurrentProductionTopic(
+      buildTopicProductionItems({
+        plan: selectedPlan!,
+        scripts,
+        videos,
+        publications,
+      }),
+    );
+    if (!next || !selectedPlan) {
       return;
     }
-    const plan = usablePlans.find((item) => item.id === record.contentPlanId) ?? null;
-    const topic = topicsForPlan(plan).find((item) => item.id === record.topicId);
-    if (plan && topic?.id) {
-      setForm({
-        ...form,
-        contentPlanId: plan.id,
-        topicId: topic.id,
-        targetDuration: hintDurationFromTopic(topic.estimatedDuration),
-      });
-    }
-    setSelectedScriptId(record.id);
-    setEditing(false);
-    setDraft(null);
+    setJustConfirmed(false);
+    selectQueueTopic(next.topicId);
   }
 
   const actions = current ? (
     <aside className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-      <p className="text-neutral-600">
-        编辑会修改当前草稿内容。重新生成会基于同一选题创建新的脚本版本。
-      </p>
+      <p className="text-neutral-600">重新生成只会生成这一条的新脚本版本，不会改变整套周计划。</p>
       {canEditScript(current.status) && currentPayload ? (
         editing ? (
           <button
@@ -282,14 +347,29 @@ function ContentScriptsPageInner() {
           >
             确认脚本
           </button>
-          <p className="text-neutral-600">确认后即可进入视频制作。</p>
+          <p className="text-neutral-600">确认后可继续制作视频，或批量写下一条脚本。</p>
         </div>
       ) : null}
-      {canGenerateVideo(current.status) ? (
+      {justConfirmed && canGenerateVideo(current.status) ? (
+        <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+          <p className="font-medium text-neutral-900">✓ 第 {focusItem?.dayIndex ?? "N"} 条脚本已确认</p>
+          <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
+            制作这条视频
+          </Link>
+          {currentProductionTopic ? (
+            <button className="w-full rounded-md border px-4 py-2" type="button" onClick={goNextScriptTopic}>
+              继续制作下一条脚本
+            </button>
+          ) : (
+            <p className="text-xs text-neutral-600">本期脚本已全部完成。</p>
+          )}
+        </div>
+      ) : null}
+      {!justConfirmed && canGenerateVideo(current.status) ? (
         <div className="space-y-2">
           <p className="text-neutral-700">脚本已确认，可以进入视频制作。</p>
           <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
-            生成视频
+            继续制作视频
           </Link>
         </div>
       ) : null}
@@ -306,7 +386,12 @@ function ContentScriptsPageInner() {
       {canArchiveScript(current.status) ? (
         <details>
           <summary className="cursor-pointer text-neutral-600">更多操作</summary>
-          <button className="mt-2 w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => setArchiveAsk(true)}>
+          <button
+            className="mt-2 w-full rounded-md border px-4 py-2 disabled:opacity-50"
+            type="button"
+            disabled={pending}
+            onClick={() => setArchiveAsk(true)}
+          >
             归档脚本
           </button>
         </details>
@@ -315,7 +400,12 @@ function ContentScriptsPageInner() {
         <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
           <p>归档后，这份脚本不再用于视频制作。</p>
           <div className="mt-2 flex gap-2">
-            <button className="rounded-md bg-neutral-950 px-3 py-1.5 text-white" type="button" disabled={pending} onClick={() => void archive()}>
+            <button
+              className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
+              type="button"
+              disabled={pending}
+              onClick={() => void archive()}
+            >
               确认归档
             </button>
             <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setArchiveAsk(false)}>
@@ -331,7 +421,7 @@ function ContentScriptsPageInner() {
     <div>
       <PageHeader
         title="脚本"
-        description="从已确认的内容计划选题生成完整视频脚本，并在确认后进入视频制作。"
+        description="按本期内容规划顺序制作脚本。系统会自动带入当前待制作选题。"
         breadcrumb={`项目 / ${project.name} / 脚本`}
       />
 
@@ -354,11 +444,13 @@ function ContentScriptsPageInner() {
       ) : null}
 
       {!loading && !loadError && usablePlans.length === 0 ? (
-        <EmptyState
-          title="还没有可用的内容计划"
-          description="先确认一份内容计划，再从选题生成脚本。"
-          primaryAction={{ label: "去内容计划", href: contentPlansHref(projectId) }}
-        />
+        <WorkspacePageShell>
+          <EmptyState
+            title="还没有可用的内容计划"
+            description="先确认一份内容计划，再从选题生成脚本。"
+            primaryAction={{ label: "去内容计划", href: contentPlansHref(projectId) }}
+          />
+        </WorkspacePageShell>
       ) : null}
 
       {!loading && !loadError && usablePlans.length > 0 ? (
@@ -368,8 +460,24 @@ function ContentScriptsPageInner() {
               {queryWarning}
             </p>
           ) : null}
+          {viewingHistoricalPlan ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              你正在查看历史计划。当前生产仍以最新已确认计划为准。
+            </p>
+          ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+          {selectedPlan ? (
+            <ScriptProductionQueue
+              items={productionItems}
+              currentTopicId={currentProductionTopic?.topicId}
+              selectedTopicId={form.topicId}
+              scriptReadyCount={progress.scriptReadyCount}
+              onSelect={selectQueueTopic}
+              compact={isCompactQueue}
+            />
+          ) : null}
+
+          <WorkspacePageShell sidebar={actions}>
             <div className="space-y-6">
               <ScriptSourceForm
                 form={form}
@@ -378,15 +486,45 @@ function ContentScriptsPageInner() {
                 topics={topics}
                 pending={pending}
                 onChange={changeForm}
+                collapsedByDefault
               />
 
-              {selectedPlan && selectedTopic ? (
+              {allScriptsDone && !form.topicId ? (
                 <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-                  <h2 className="mb-2 font-medium">当前选题</h2>
-                  <p>
-                    内容计划：第 {selectedPlan.version} 版 · {planStatusLabel(selectedPlan.status)}
+                  <h2 className="font-medium">本期脚本已全部完成</h2>
+                  <p className="mt-1 text-neutral-600">
+                    {nextAction.kind === "VIDEO"
+                      ? "可以继续制作视频，或点队列查看任意一天的脚本。"
+                      : nextAction.kind === "PUBLISH"
+                        ? "视频已齐，可去发布。"
+                        : "本期内容已全部发布。"}
                   </p>
-                  <TopicSummary topic={selectedTopic} />
+                  {nextAction.kind === "VIDEO" && nextAction.scriptId ? (
+                    <Link
+                      className="mt-3 inline-block rounded-md bg-neutral-950 px-4 py-2 text-white"
+                      href={videoHref(projectId, nextAction.scriptId)}
+                    >
+                      继续制作视频
+                    </Link>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {selectedPlan && selectedTopic && focusItem ? (
+                <section className="rounded-xl border border-neutral-900 bg-white p-4 text-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">当前制作</p>
+                  <h2 className="mt-1 text-base font-medium text-neutral-950">
+                    {focusItem.sequenceLabel} · {focusItem.title}
+                  </h2>
+                  <p className="mt-1 text-neutral-600">{focusItem.statusLabel}</p>
+                  <p className="mt-2 text-xs text-neutral-500">
+                    内容计划：第 {selectedPlan.version} 版 · {planStatusLabel(selectedPlan.status)} · 本周第{" "}
+                    {focusItem.topicIndex + 1}/{productionItems.length} 条
+                  </p>
+                  <TopicSummary topic={selectedTopic} focus={focusItem} />
+                  {draftBesideConfirmed ? (
+                    <p className="mt-3 text-xs text-amber-900">有一份未确认的新版本；正式生产仍以已确认脚本为准。</p>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -403,45 +541,24 @@ function ContentScriptsPageInner() {
 
               {canGenerateFromForm(form) && !current ? (
                 <button
-                  className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white disabled:opacity-50"
+                  className="sticky bottom-3 z-10 rounded-md bg-neutral-950 px-4 py-2 text-sm text-white disabled:opacity-50 md:static"
                   type="button"
                   disabled={pending}
                   onClick={() => void generate()}
                 >
-                  生成脚本
+                  生成这条脚本
                 </button>
               ) : null}
 
-              {!form.topicId && recent.length > 0 ? (
-                <section>
-                  <h2 className="mb-3 text-sm font-medium">最近脚本</h2>
-                  <ul className="space-y-2">
-                    {recent.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm"
-                          type="button"
-                          onClick={() => openRecent(item.id)}
-                        >
-                          <p className="font-medium">{item.title}</p>
-                          <p className="text-neutral-600">对应选题：{item.topicTitle}</p>
-                          <p className="text-neutral-500">
-                            {[item.statusLabel, item.createdAtLabel].filter(Boolean).join(" · ")}
-                          </p>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-
               {form.topicId && !current && !pending ? (
-                <p className="text-sm text-neutral-600">还没有这个选题的脚本，点击生成脚本开始。</p>
+                <p className="text-sm text-neutral-600">还没有这个选题的脚本，点击生成开始。</p>
               ) : null}
 
               {current && !currentView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
 
-              {current && currentView && editing && draft ? <ScriptEditor draft={draft} pending={pending} onChange={setDraft} /> : null}
+              {current && currentView && editing && draft ? (
+                <ScriptEditor draft={draft} pending={pending} onChange={setDraft} />
+              ) : null}
 
               {current && currentView && !editing ? (
                 <ScriptDetail
@@ -452,8 +569,7 @@ function ContentScriptsPageInner() {
                 />
               ) : null}
             </div>
-            <div className="lg:sticky lg:top-4 lg:self-start">{actions}</div>
-          </div>
+          </WorkspacePageShell>
 
           {form.topicId ? (
             <ScriptHistory
@@ -480,35 +596,45 @@ function resolveCurrentScript(scripts: ScriptRecord[], form: ScriptFormState, se
   return null;
 }
 
-function TopicSummary({ topic }: { topic: ContentTopicRecord }) {
+function TopicSummary({
+  topic,
+  focus,
+}: {
+  topic: ContentTopicRecord;
+  focus: { hook?: string; contentAngle?: string; contentPillar?: string; format?: string; cta?: string; reason?: string };
+}) {
   return (
     <dl className="mt-3 space-y-1">
-      <div>
-        <dt className="text-neutral-500">选题</dt>
-        <dd className="break-words">{topic.title}</dd>
-      </div>
-      {topic.contentAngle ? (
-        <div>
-          <dt className="text-neutral-500">内容角度</dt>
-          <dd className="break-words">{topic.contentAngle}</dd>
-        </div>
-      ) : null}
-      {topic.targetAudience ? (
-        <div>
-          <dt className="text-neutral-500">目标受众</dt>
-          <dd className="break-words">{topic.targetAudience}</dd>
-        </div>
-      ) : null}
-      {topic.hook ? (
+      {(focus.hook || topic.hook) && (
         <div>
           <dt className="text-neutral-500">Hook</dt>
-          <dd className="whitespace-pre-wrap break-words">{topic.hook}</dd>
+          <dd className="whitespace-pre-wrap break-words">{focus.hook || topic.hook}</dd>
         </div>
-      ) : null}
-      {topic.cta ? (
+      )}
+      {(focus.contentAngle || topic.contentAngle) && (
         <div>
-          <dt className="text-neutral-500">CTA 方向</dt>
-          <dd className="break-words">{topic.cta}</dd>
+          <dt className="text-neutral-500">内容角度</dt>
+          <dd className="break-words">{focus.contentAngle || topic.contentAngle}</dd>
+        </div>
+      )}
+      {(focus.contentPillar || focus.format || topic.contentPillar || topic.format) && (
+        <div>
+          <dt className="text-neutral-500">支柱 / 形式</dt>
+          <dd className="break-words">
+            {[focus.contentPillar || topic.contentPillar, focus.format || topic.format].filter(Boolean).join(" · ")}
+          </dd>
+        </div>
+      )}
+      {(focus.cta || topic.cta) && (
+        <div>
+          <dt className="text-neutral-500">CTA</dt>
+          <dd className="break-words">{focus.cta || topic.cta}</dd>
+        </div>
+      )}
+      {focus.reason ? (
+        <div>
+          <dt className="text-neutral-500">本周位置</dt>
+          <dd className="break-words">{focus.reason}</dd>
         </div>
       ) : null}
     </dl>

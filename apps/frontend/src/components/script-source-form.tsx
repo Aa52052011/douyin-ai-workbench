@@ -9,6 +9,7 @@ export function ScriptSourceForm({
   topics,
   pending,
   onChange,
+  collapsedByDefault = false,
 }: {
   form: ScriptFormState;
   plans: ContentPlanRecord[];
@@ -16,12 +17,11 @@ export function ScriptSourceForm({
   topics: ContentTopicRecord[];
   pending: boolean;
   onChange: (next: ScriptFormState) => void;
+  collapsedByDefault?: boolean;
 }) {
   const groups = topicSelectorGroups(selectedPlan);
-
-  return (
-    <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-medium">来源选题</h2>
+  const body = (
+    <div className="space-y-4">
       <div>
         <label className="mb-1 block text-sm font-medium" htmlFor="script-plan">
           内容计划
@@ -108,6 +108,22 @@ export function ScriptSourceForm({
           onChange={(event) => onChange({ ...form, requirements: event.target.value })}
         />
       </label>
+    </div>
+  );
+
+  if (collapsedByDefault) {
+    return (
+      <details className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
+        <summary className="cursor-pointer font-medium text-neutral-800">切换内容计划 / 选题</summary>
+        <div className="mt-4">{body}</div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
+      <h2 className="text-sm font-medium">来源选题</h2>
+      {body}
     </div>
   );
 }

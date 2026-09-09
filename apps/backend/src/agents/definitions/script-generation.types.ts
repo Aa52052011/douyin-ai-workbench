@@ -1,6 +1,11 @@
 import type { AccountPositioningOutput } from './account-positioning.types.js';
 import { FORBIDDEN_CONTEXT_KEYS } from './account-positioning.types.js';
 import type { ContentTopic } from './content-planning.types.js';
+import type {
+  CompactContentPlanContext,
+  CompactPreviousScriptSummary,
+  CompactStrategyContext,
+} from './script-generation.context.js';
 
 export const SCRIPT_TARGET_DURATION_VALUES = [15, 30, 45, 60] as const;
 export type ScriptTargetDuration = (typeof SCRIPT_TARGET_DURATION_VALUES)[number];
@@ -15,6 +20,12 @@ export type ScriptGenerationInput = {
   planTitle?: string;
   targetDuration: ScriptTargetDuration;
   requirements?: string;
+  /** Server-assembled week plan context (12.12P). */
+  contentPlanContext?: CompactContentPlanContext;
+  /** Server-assembled prior confirmed script digests (12.12P). */
+  previousScriptSummaries?: CompactPreviousScriptSummary[];
+  /** Server-assembled strategy digest when available (12.12P). */
+  strategyContext?: CompactStrategyContext;
 };
 
 export type ScriptSection = {
@@ -49,6 +60,9 @@ export const SCRIPT_GENERATION_INPUT_KEYS = [
   'planTitle',
   'targetDuration',
   'requirements',
+  'contentPlanContext',
+  'previousScriptSummaries',
+  'strategyContext',
 ] as const;
 
 export const SCRIPT_FORBIDDEN_KEYS = FORBIDDEN_CONTEXT_KEYS;

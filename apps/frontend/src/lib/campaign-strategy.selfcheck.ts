@@ -170,7 +170,7 @@ function run() {
   assert.equal(canGenerateStrategy({ briefExists: true, positioningRunId: "x" }), true);
 
   assert.equal(strategyConfidenceLabel("LOW"), "可信度较低");
-  assert.equal(strategyConfidenceLabel("MEDIUM"), "可信度中等");
+  assert.equal(strategyConfidenceLabel("MEDIUM"), "可信度一般");
   assert.equal(strategyConfidenceLabel("HIGH"), "可信度较高");
 
   assert.equal(strategyStatusLabel("READY"), "可使用");

@@ -8,6 +8,7 @@ import { PageHeader } from "../../../../../../components/page-header";
 import { VideoDetail } from "../../../../../../components/video-detail";
 import { VideoHistory } from "../../../../../../components/video-history";
 import { VideoSourceForm } from "../../../../../../components/video-source-form";
+import { WorkspacePageShell } from "../../../../../../components/workspace-page-shell";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
 import { listScripts } from "../../../../../../lib/script.api";
@@ -220,9 +221,12 @@ function ContentVideosPageInner() {
   const actions = current ? (
     <aside className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
       {canRetryVideo(current.status) ? (
-        <button className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={pending} onClick={() => void retry()}>
-          重试生成
-        </button>
+        <div className="space-y-2">
+          <button className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={pending} onClick={() => void retry()}>
+            重试生成
+          </button>
+          <p className="text-xs text-neutral-500">继续未完成的生成，尽量复用已完成的画面、配音和字幕。</p>
+        </div>
       ) : null}
       {canExportVideo(current.status) ? (
         <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void download()}>
@@ -238,9 +242,12 @@ function ContentVideosPageInner() {
         </div>
       ) : null}
       {scriptId ? (
-        <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void generate()}>
-          重新生成视频
-        </button>
+        <div className="space-y-2">
+          <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void generate()}>
+            重新生成视频
+          </button>
+          <p className="text-xs text-neutral-500">重新创建一版视频，可能重新生成画面和配音。</p>
+        </div>
       ) : null}
     </aside>
   ) : null;
@@ -272,11 +279,13 @@ function ContentVideosPageInner() {
       ) : null}
 
       {!loading && !loadError && usableScripts.length === 0 ? (
-        <EmptyState
-          title="还没有可生成视频的脚本"
-          description="先确认一份脚本，再进入视频制作。"
-          primaryAction={{ label: "去脚本", href: scriptsHref(projectId) }}
-        />
+        <WorkspacePageShell>
+          <EmptyState
+            title="还没有可生成视频的脚本"
+            description="先确认一份脚本，再进入视频制作。"
+            primaryAction={{ label: "去脚本", href: scriptsHref(projectId) }}
+          />
+        </WorkspacePageShell>
       ) : null}
 
       {!loading && !loadError && usableScripts.length > 0 ? (
@@ -287,7 +296,7 @@ function ContentVideosPageInner() {
             </p>
           ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+          <WorkspacePageShell sidebar={actions}>
             <div className="space-y-6">
               <VideoSourceForm
                 scriptId={scriptId}
@@ -342,8 +351,7 @@ function ContentVideosPageInner() {
                 />
               ) : null}
             </div>
-            <div className="lg:sticky lg:top-4 lg:self-start">{actions}</div>
-          </div>
+          </WorkspacePageShell>
 
           <VideoHistory
             items={videoHistoryViews(scriptVideos)}

@@ -11,7 +11,9 @@ describe('AgentRegistry', () => {
       'account.positioning',
       'campaign.strategy',
       'content.planning',
+      'market.intake',
       'market.intelligence',
+      'product.intake',
       'script.generation',
       'system.echo',
     ]);
@@ -22,6 +24,8 @@ describe('AgentRegistry', () => {
     expect(registry.get('script.generation', 'v1').id).toBe('script.generation');
     expect(registry.get('market.intelligence', 'v1').id).toBe('market.intelligence');
     expect(registry.get('campaign.strategy', 'v1').id).toBe('campaign.strategy');
+    expect(registry.get('product.intake', 'v1').id).toBe('product.intake');
+    expect(registry.get('market.intake', 'v1').id).toBe('market.intake');
   });
 
   it('rejects unknown agents and versions', () => {

@@ -1,6 +1,10 @@
+"use client";
+
 import { useState } from "react";
 import { api } from "../lib/api";
+import { projectPlatformApiValue, projectPlatformSelectValue, type ProjectPlatformId } from "../lib/project-platform";
 import type { Project } from "../lib/types";
+import { ProjectPlatformSelect } from "./project-platform-select";
 
 export function EditProjectPanel({
   project,
@@ -15,7 +19,7 @@ export function EditProjectPanel({
 }) {
   const [name, setName] = useState(project.name);
   const [industry, setIndustry] = useState(project.industry ?? "");
-  const [platform, setPlatform] = useState(project.platform ?? "");
+  const [platform, setPlatform] = useState<ProjectPlatformId>(projectPlatformSelectValue(project.platform));
   const [description, setDescription] = useState(project.description ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -28,7 +32,12 @@ export function EditProjectPanel({
       const saved = await api<Project>(`/projects/${project.id}`, {
         method: "PATCH",
         accessToken,
-        body: JSON.stringify({ name, industry, platform, description }),
+        body: JSON.stringify({
+          name,
+          industry: industry.trim() || undefined,
+          platform: projectPlatformApiValue(platform),
+          description: description.trim() || undefined,
+        }),
       });
       onSaved(saved);
       onClose();
@@ -45,33 +54,47 @@ export function EditProjectPanel({
         className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-xl bg-white p-5 shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="edit-project-title"
         onSubmit={(event) => void onSubmit(event)}
       >
-        <h2 className="text-lg font-medium">编辑项目</h2>
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="行业"
-          value={industry}
-          onChange={(event) => setIndustry(event.target.value)}
-        />
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="平台"
-          value={platform}
-          onChange={(event) => setPlatform(event.target.value)}
-        />
-        <textarea
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="描述"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
+        <h2 id="edit-project-title" className="text-lg font-medium">
+          编辑项目
+        </h2>
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-name">
+            项目名称
+          </label>
+          <input
+            id="edit-project-name"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+        </div>
+        <ProjectPlatformSelect id="edit-project-platform" value={platform} onChange={setPlatform} required />
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-industry">
+            行业
+          </label>
+          <input
+            id="edit-project-industry"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            value={industry}
+            onChange={(event) => setIndustry(event.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-description">
+            描述
+          </label>
+          <textarea
+            id="edit-project-description"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <button className="rounded-md border px-3 py-2 text-sm" type="button" onClick={onClose}>

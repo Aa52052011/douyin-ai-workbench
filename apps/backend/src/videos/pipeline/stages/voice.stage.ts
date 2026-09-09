@@ -8,7 +8,8 @@ import type { TtsProvider } from '../../../media/providers/media-provider.types.
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
 import { inferVoicePreset } from '../../../media/tts/tts-voice.js';
 import { reusableAssetIds } from '../asset-reuse.js';
-import { metadataNumber } from '../visual-reuse.js';
+import { metadataNumber, metadataString } from '../visual-reuse.js';
+import { findReusableVoiceAsset, voiceTextFingerprint } from '../voice-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
 
 @Injectable()
@@ -24,20 +25,44 @@ export class VoiceGenerationStage {
     usage?: { audioCharacters: number; audioSeconds: number; audioSecondsExact?: number };
   }> {
     const output = asPipelineOutput(ctx.job.output);
-    const reused = await reusableAssetIds(ctx, output.stages.voice?.assetIds);
-    if (reused?.[0]) {
+    const reusedIds = await reusableAssetIds(ctx, output.stages.voice?.assetIds);
+    if (reusedIds?.[0]) {
       const asset = await ctx.prisma.asset.findFirst({
-        where: { id: reused[0], tenantId: ctx.job.tenantId },
+        where: { id: reusedIds[0], tenantId: ctx.job.tenantId },
       });
       const reusedDuration = asset?.duration ?? output.stages.voice?.duration ?? 1;
       return {
-        assetId: reused[0],
+        assetId: reusedIds[0],
         duration: reusedDuration,
         durationExact: metadataNumber(asset?.metadata, 'durationExact') ?? reusedDuration,
         provider: output.stages.voice?.provider ?? this.tts.id,
         model: output.stages.voice?.model,
       };
     }
+
+    const crossJob = await findReusableVoiceAsset(ctx);
+    if (crossJob) {
+      await ctx.prisma.assetLink.create({
+        data: {
+          tenantId: ctx.job.tenantId,
+          workspaceId: ctx.job.workspaceId,
+          projectId: ctx.job.projectId,
+          assetId: crossJob.id,
+          videoId: ctx.plan.videoId,
+          jobId: ctx.job.id,
+          role: AssetLinkRole.VIDEO_AUDIO,
+        },
+      });
+      const reusedDuration = crossJob.duration ?? 1;
+      return {
+        assetId: crossJob.id,
+        duration: reusedDuration,
+        durationExact: metadataNumber(crossJob.metadata, 'durationExact') ?? reusedDuration,
+        provider: metadataString(crossJob.metadata, 'provider') ?? this.tts.id,
+        model: metadataString(crossJob.metadata, 'model'),
+      };
+    }
+
     if (ctx.failStage === 'voice') {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
     }
@@ -84,6 +109,7 @@ export class VoiceGenerationStage {
             format: originalFilename.endsWith('.mp3') ? 'mp3' : 'wav',
             duration: rendered.duration,
             durationExact: rendered.usage?.audioSecondsExact ?? rendered.duration,
+            voiceTextHash: voiceTextFingerprint(ctx.plan.voice.text),
             ...(rendered.usage?.providerDurationMs != null
               ? { providerDuration: rendered.usage.providerDurationMs }
               : {}),

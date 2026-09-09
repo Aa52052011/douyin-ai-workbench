@@ -55,7 +55,7 @@ function run() {
   );
 
   const empty = emptyStatusFacts();
-  assert.equal(getProjectNextAction(projectId, empty).label, "填写产品信息");
+  assert.equal(getProjectNextAction(projectId, empty).label, "开始填写产品信息");
   assert.equal(getProjectNextAction(projectId, { ...empty, productPresent: true }).label, "生成账号定位");
   assert.equal(
     getProjectNextAction(projectId, { ...empty, productPresent: true, positioningValid: true, researchPresent: true }).label,

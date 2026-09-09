@@ -141,6 +141,41 @@ describe('market.intelligence executor', () => {
     expect(used.every((code) => available.has(code))).toBe(true);
   });
 
+  it('retries once on schema-invalid LIMITED output then succeeds', async () => {
+    const input = limitedInput();
+    const valid = buildMockMarketInsightOutput(input);
+    let calls = 0;
+    const executor = executorWith(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          text: JSON.stringify({ ...valid, confidence: 'HIGH' }),
+          provider: 'mock',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, estimatedCost: 0 },
+        };
+      }
+      return {
+        text: JSON.stringify(valid),
+        provider: 'mock',
+        usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4, estimatedCost: 0 },
+      };
+    });
+    const result = await executor.execute(
+      {
+        requestId: context.requestId,
+        agentId: 'market.intelligence',
+        agentVersion: 'v1',
+        context,
+        input,
+      },
+      5000,
+    );
+    expect(calls).toBe(2);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.usage?.totalTokens).toBe(6);
+    expect(result.output?.confidence).not.toBe('HIGH');
+  });
+
   it('fails closed when the model invents an evidenceCode', async () => {
     const input = limitedInput();
     const forged = buildMockMarketInsightOutput(input);

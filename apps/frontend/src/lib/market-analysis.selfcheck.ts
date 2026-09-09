@@ -11,6 +11,7 @@ import {
   historyItemViews,
   humanizeMarketAnalysisError,
   humanizeMarketEvidence,
+  humanizeLimitationText,
   insightView,
   latestInsight,
   marketStateLabel,
@@ -133,7 +134,7 @@ function run() {
   assert.equal(marketStateLabel("ANALYZABLE_SAMPLE"), "当前样本可分析");
 
   assert.equal(analysisConfidenceLabel("LOW"), "可信度较低");
-  assert.equal(analysisConfidenceLabel("MEDIUM"), "可信度中等");
+  assert.equal(analysisConfidenceLabel("MEDIUM"), "可信度一般");
   assert.equal(analysisConfidenceLabel("HIGH"), "可信度较高");
 
   assert.equal(evidenceKindLabel("DATA_BACKED"), "样本直接支持");
@@ -152,9 +153,15 @@ function run() {
   assert.equal(JSON.stringify(unknown).includes("SOME_NEW_CODE"), false);
   assert.equal(evidenceHumanizationAvoidsPlatformClaims(), true);
 
-  assert.equal(researchQualityWarning("LIMITED"), "当前样本有限，分析结果会更保守。");
-  assert.equal(researchQualityWarning("NONE"), "当前数据不足，建议补充市场样本。");
-  assert.equal(noneGenerateNote("NONE")?.includes("不会产生有效结论"), true);
+  assert.equal(
+    researchQualityWarning("LIMITED"),
+    "目前市场信息较少，本轮分析会更多依赖你的产品信息和已确认的研究方向，结论可信度会相对较低。",
+  );
+  assert.equal(
+    researchQualityWarning("NONE"),
+    "目前市场信息较少，本轮分析会更多依赖你的产品信息和已确认的研究方向，结论可信度会相对较低。",
+  );
+  assert.equal(noneGenerateNote("NONE")?.includes("低数据市场分析"), true);
   assert.equal(researchQualityWarning("USABLE"), null);
 
   const catalog = evidenceCatalog(evidence);
@@ -165,7 +172,7 @@ function run() {
     ["关键词观察", "内容观察", "对下一步策略的启示"],
   );
   assert.equal(view.marketStateLabel, "样本信号有限");
-  assert.equal(view.dataLimitations.includes("当前数据只代表导入样本"), true);
+  assert.equal(view.dataLimitations.includes("当前市场样本较少"), true);
   assert.equal(view.dataLimitations.includes("样本选择方式未知"), true);
 
   const history = historyItemViews([insightA, insightB]);
@@ -206,6 +213,44 @@ function run() {
   assert.equal(humanizeMarketAnalysisError({ code: "AGENT_INVALID_OUTPUT", message: "schema" }), "市场分析生成失败，请稍后重试。");
   assert.equal(JSON.stringify(view).includes("AgentRun"), false);
   assert.equal(JSON.stringify(view).includes("evidenceCodes"), false);
+
+  // 12.12Q-A — raw terminology must not reach user-facing view text
+  assert.equal(humanizeLimitationText("LIMITED_SAMPLE"), "当前市场样本较少");
+  assert.equal(humanizeLimitationText("NO_MARKET_DATA"), "暂无可分析市场样本");
+  assert.equal(humanizeLimitationText("MISSING_METRICS"), "缺少真实表现数据");
+  assert.equal(humanizeLimitationText("MANUAL_ONLY"), "当前主要基于人工补充信息");
+  assert.equal(humanizeLimitationText("WEIRD_UNKNOWN_ENUM_XYZ"), "当前可用信息仍有限，建议补充更多市场素材或先执行首轮验证。");
+  assert.equal(
+    humanizeLimitationText("missing metrics under LIMITED_SAMPLE"),
+    "当前样本较少，并且缺少真实表现数据。",
+  );
+  assert.equal(humanizeLimitationText("based on missing evidence categories in LIMITED_SAMPLE").includes("LIMITED_SAMPLE"), false);
+
+  const polluted = insightView(
+    {
+      ...insightA.payload,
+      keywordInsights: [
+        {
+          statement: "样本不足",
+          confidence: "LOW",
+          evidenceCodes: [],
+          caveat: "missing metrics under LIMITED_SAMPLE",
+        },
+      ],
+      dataLimitations: ["LIMITED_SAMPLE", "MANUAL_ONLY"],
+    },
+    catalog,
+  );
+  assert.ok(polluted);
+  const userFacing = [
+    polluted.executiveSummary,
+    ...polluted.dataLimitations,
+    ...polluted.sections.flatMap((section) => section.items.flatMap((item) => [item.statement, item.caveat || ""])),
+  ].join("\n");
+  assert.equal(/\bLIMITED_SAMPLE\b/.test(userFacing), false);
+  assert.equal(/\bMANUAL_ONLY\b/.test(userFacing), false);
+  assert.equal(/missing metrics/i.test(userFacing), false);
+  assert.match(polluted.sections[0].items[0].caveat || "", /样本较少|缺少真实表现/);
 
   console.log("market-analysis selfcheck PASS");
 }

@@ -16,6 +16,12 @@ import {
   MARKET_INTELLIGENCE_AGENT_ID,
   MARKET_INTELLIGENCE_AGENT_VERSION,
   MARKET_INTELLIGENCE_PROMPT,
+  MARKET_INTAKE_AGENT_ID,
+  MARKET_INTAKE_AGENT_VERSION,
+  MARKET_INTAKE_PROMPT,
+  PRODUCT_INTAKE_AGENT_ID,
+  PRODUCT_INTAKE_AGENT_VERSION,
+  PRODUCT_INTAKE_PROMPT,
   SCRIPT_GENERATION_AGENT_ID,
   SCRIPT_GENERATION_AGENT_VERSION,
   SCRIPT_GENERATION_PROMPT,
@@ -44,6 +50,7 @@ import {
 } from '../definitions/script-generation.agent.js';
 import {
   buildInsufficientMarketInsight,
+  listMarketEvidenceItems,
   parseMarketIntelligenceInput,
   validateMarketInsightOutput,
 } from '../definitions/market-intelligence.agent.js';
@@ -54,6 +61,24 @@ import {
 } from '../../campaign/campaign-strategy.types.js';
 import { validateCampaignStrategyOutput } from '../../campaign/campaign-strategy.validation.js';
 import { parseEchoInput } from '../definitions/system-echo.agent.js';
+import {
+  parseAndValidateProductIntakeModelText,
+  parseProductIntakeInput,
+} from '../definitions/product-intake.agent.js';
+import type { ProductIntakeAgentInput } from '../definitions/product-intake.types.js';
+import {
+  compactProductIntakeDraft,
+  getProductIntakeQuestionPlan,
+} from '../definitions/product-intake-question-plan.js';
+import {
+  parseAndValidateMarketIntakeModelText,
+  parseMarketIntakeInput,
+} from '../definitions/market-intake.agent.js';
+import type { MarketIntakeAgentInput } from '../definitions/market-intake.types.js';
+import {
+  compactMarketIntakeDraft,
+  getMarketIntakeQuestionPlan,
+} from '../definitions/market-intake-question-plan.js';
 import { ModelRouter } from '../models/model.router.js';
 import { PromptRegistry } from '../prompts/prompt.registry.js';
 import { ToolRegistry } from '../tools/tool.registry.js';
@@ -111,6 +136,18 @@ export class InProcessAgentExecutor implements AgentExecutor {
       definition.version === CAMPAIGN_STRATEGY_AGENT_VERSION
     ) {
       return this.runCampaignStrategy(request, definition);
+    }
+    if (
+      definition.id === PRODUCT_INTAKE_AGENT_ID &&
+      definition.version === PRODUCT_INTAKE_AGENT_VERSION
+    ) {
+      return this.runProductIntake(request, definition);
+    }
+    if (
+      definition.id === MARKET_INTAKE_AGENT_ID &&
+      definition.version === MARKET_INTAKE_AGENT_VERSION
+    ) {
+      return this.runMarketIntake(request, definition);
     }
     throw new AgentError(ErrorCode.AGENT_NOT_FOUND);
   }
@@ -305,6 +342,9 @@ export class InProcessAgentExecutor implements AgentExecutor {
       contentStyle: parsed.contentStyle ?? '',
       planTitle: parsed.planTitle ?? '',
       requirements: parsed.requirements ?? '',
+      contentPlanContext: JSON.stringify(parsed.contentPlanContext ?? {}),
+      previousScriptSummaries: JSON.stringify(parsed.previousScriptSummaries ?? []),
+      strategyContext: JSON.stringify(parsed.strategyContext ?? {}),
       topic: JSON.stringify(parsed.topic),
       positioning: JSON.stringify(parsed.positioning),
     });
@@ -385,25 +425,62 @@ export class InProcessAgentExecutor implements AgentExecutor {
       user: prompt.userPrompt,
     });
 
-    const model = await this.models.generate({
-      agentId: definition.id,
-      tenantId: request.context.tenantId,
-      task: MARKET_INTELLIGENCE_AGENT_ID,
-      model: definition.defaultModel,
-      temperature: definition.temperature,
-      maxTokens: definition.maxTokens,
-      timeoutMs: definition.timeoutMs,
-      responseFormat: 'json',
-      systemPrompt: prompt.systemPrompt,
-      prompt: prompt.userPrompt,
-      messages: [
-        { role: 'system', content: prompt.systemPrompt },
-        { role: 'user', content: prompt.userPrompt },
-      ],
-    });
+    const generateOnce = async (userPrompt: string) =>
+      this.models.generate({
+        agentId: definition.id,
+        tenantId: request.context.tenantId,
+        task: MARKET_INTELLIGENCE_AGENT_ID,
+        model: definition.defaultModel,
+        temperature: definition.temperature,
+        maxTokens: definition.maxTokens,
+        timeoutMs: definition.timeoutMs,
+        responseFormat: 'json',
+        systemPrompt: prompt.systemPrompt,
+        prompt: userPrompt,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+
+    let model = await generateOnce(prompt.userPrompt);
     this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
-    const responseMeta = payloadFingerprint(model.text);
-    const output = validateMarketInsightOutput(parseModelJson(model.text), parsed);
+    let responseMeta = payloadFingerprint(model.text);
+    let output: ReturnType<typeof validateMarketInsightOutput>;
+    try {
+      output = validateMarketInsightOutput(parseModelJson(model.text), parsed);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== ErrorCode.AGENT_INVALID_OUTPUT) {
+        throw error;
+      }
+      // One schema-repair retry only (same pattern as intake / strategy).
+      const availableCodes = listMarketEvidenceItems(parsed.marketEvidence)
+        .map((item) => item.code)
+        .slice(0, 40);
+      const repairPrompt = `${prompt.userPrompt}
+
+上次输出未通过 schema 校验。请重新输出：仅一个 JSON 对象；不要 markdown。
+硬修复要求：
+- marketResearchId / evidenceVersion 必须与输入 MarketEvidence 完全一致
+- evidenceCodes 只能从以下真实 code 中选择：${JSON.stringify(availableCodes)}
+- 若 dataSufficiency=LIMITED：marketState 只能是 LIMITED_SIGNAL 或 INSUFFICIENT_DATA；confidence 只能 LOW/MEDIUM；dataLimitations 必须非空且建议包含 LIMITED_SAMPLE
+- 禁止虚构 evidenceCode、禁止 HIGH（当 LIMITED）、禁止平台级断言`;
+      const repaired = await generateOnce(repairPrompt);
+      model = {
+        ...repaired,
+        usage: {
+          inputTokens: (model.usage.inputTokens ?? 0) + (repaired.usage.inputTokens ?? 0),
+          outputTokens: (model.usage.outputTokens ?? 0) + (repaired.usage.outputTokens ?? 0),
+          totalTokens: (model.usage.totalTokens ?? 0) + (repaired.usage.totalTokens ?? 0),
+          estimatedCost:
+            model.usage.estimatedCost == null && repaired.usage.estimatedCost == null
+              ? null
+              : (model.usage.estimatedCost ?? 0) + (repaired.usage.estimatedCost ?? 0),
+        },
+      };
+      responseMeta = payloadFingerprint(model.text);
+      output = validateMarketInsightOutput(parseModelJson(model.text), parsed);
+    }
 
     this.logger.log({
       requestId: request.requestId,
@@ -446,25 +523,260 @@ export class InProcessAgentExecutor implements AgentExecutor {
       user: prompt.userPrompt,
     });
 
-    const model = await this.models.generate({
-      agentId: definition.id,
-      tenantId: request.context.tenantId,
-      task: CAMPAIGN_STRATEGY_AGENT_ID,
-      model: definition.defaultModel,
-      temperature: definition.temperature,
-      maxTokens: definition.maxTokens,
-      timeoutMs: definition.timeoutMs,
-      responseFormat: 'json',
-      systemPrompt: prompt.systemPrompt,
-      prompt: prompt.userPrompt,
-      messages: [
-        { role: 'system', content: prompt.systemPrompt },
-        { role: 'user', content: prompt.userPrompt },
-      ],
-    });
+    const generateOnce = async (userPrompt: string) =>
+      this.models.generate({
+        agentId: definition.id,
+        tenantId: request.context.tenantId,
+        task: CAMPAIGN_STRATEGY_AGENT_ID,
+        model: definition.defaultModel,
+        temperature: definition.temperature,
+        maxTokens: definition.maxTokens,
+        timeoutMs: definition.timeoutMs,
+        responseFormat: 'json',
+        systemPrompt: prompt.systemPrompt,
+        prompt: userPrompt,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+
+    let model = await generateOnce(prompt.userPrompt);
     this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
-    const responseMeta = payloadFingerprint(model.text);
-    const output = validateCampaignStrategyOutput(parseModelJson(model.text), parsed);
+    let responseMeta = payloadFingerprint(model.text);
+    let output: ReturnType<typeof validateCampaignStrategyOutput>;
+    try {
+      output = validateCampaignStrategyOutput(parseModelJson(model.text), parsed);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== ErrorCode.AGENT_INVALID_OUTPUT) {
+        throw error;
+      }
+      // One schema-repair retry only (aligned with intake / market intelligence).
+      const repairPrompt = `${prompt.userPrompt}
+
+上次输出未通过 schema 校验。请重新输出：仅一个 JSON 对象；不要 markdown。
+硬修复要求：
+- evidenceBasis.type / ref 只能使用提示中允许的类型与 code（marketInsightCodes=[${
+        marketInsightCodes.length > 0 ? marketInsightCodes.join(', ') : 'NONE'
+      }]；performanceSignalCodes=[${
+        performanceSignalCodes.length > 0 ? performanceSignalCodes.join(', ') : 'NONE'
+      }]）
+- 禁止虚构 MARKET_INSIGHT / PERFORMANCE ref
+- 无市场洞察时不得写“根据市场数据”；无表现反馈时不得写“历史表现表明”
+- confidence / dataLimitations 必须与输入数据充分度一致；低数据场景优先 LOW 并写清限制`;
+      const repaired = await generateOnce(repairPrompt);
+      model = {
+        ...repaired,
+        usage: {
+          inputTokens: (model.usage.inputTokens ?? 0) + (repaired.usage.inputTokens ?? 0),
+          outputTokens: (model.usage.outputTokens ?? 0) + (repaired.usage.outputTokens ?? 0),
+          totalTokens: (model.usage.totalTokens ?? 0) + (repaired.usage.totalTokens ?? 0),
+          estimatedCost:
+            model.usage.estimatedCost == null && repaired.usage.estimatedCost == null
+              ? null
+              : (model.usage.estimatedCost ?? 0) + (repaired.usage.estimatedCost ?? 0),
+        },
+      };
+      responseMeta = payloadFingerprint(model.text);
+      output = validateCampaignStrategyOutput(parseModelJson(model.text), parsed);
+    }
+
+    this.logger.log({
+      requestId: request.requestId,
+      agent: definition.id,
+      version: definition.version,
+      status: 'COMPLETED',
+      promptHash: promptMeta.hash,
+      promptLength: promptMeta.length,
+      responseHash: responseMeta.hash,
+      responseLength: responseMeta.length,
+      inputTokens: model.usage.inputTokens ?? undefined,
+      outputTokens: model.usage.outputTokens ?? undefined,
+      totalTokens: model.usage.totalTokens ?? undefined,
+    });
+
+    return {
+      status: 'COMPLETED',
+      output: output as unknown as JsonObject,
+      usage: model.usage,
+    };
+  }
+
+  private async runProductIntake(
+    request: InternalAgentRequest,
+    definition: AgentDefinition,
+  ): Promise<InternalAgentResponse> {
+    const parsed: ProductIntakeAgentInput = parseProductIntakeInput(request.input);
+    const conversationText = parsed.recentConversation
+      .map((item) => `${item.role === 'user' ? '用户' : '助手'}：${item.content}`)
+      .join('\n');
+    const questionPlan = getProductIntakeQuestionPlan(parsed.currentDraft, {
+      improvingExisting: parsed.improvingExisting,
+    });
+    const prompt = this.prompts.render(PRODUCT_INTAKE_PROMPT, PRODUCT_INTAKE_AGENT_VERSION, {
+      mode: parsed.mode,
+      locale: parsed.locale,
+      improvingExisting: parsed.improvingExisting ? 'true' : 'false',
+      currentDraftJson: JSON.stringify(compactProductIntakeDraft(parsed.currentDraft)),
+      missingRequiredFields: JSON.stringify(questionPlan.missingRequiredFields),
+      nextPriorityFields: JSON.stringify(questionPlan.nextPriorityFields),
+      missingRequiredLabels: JSON.stringify(questionPlan.missingRequiredLabels),
+      optionalLaterFields: JSON.stringify(questionPlan.optionalLaterFields),
+      recentConversationText: conversationText || '（无）',
+      latestUserMessage: parsed.latestUserMessage,
+    });
+    const promptMeta = payloadFingerprint({
+      system: prompt.systemPrompt,
+      user: prompt.userPrompt,
+    });
+
+    const generateOnce = async (userPrompt: string) =>
+      this.models.generate({
+        agentId: definition.id,
+        tenantId: request.context.tenantId,
+        task: PRODUCT_INTAKE_AGENT_ID,
+        model: definition.defaultModel,
+        temperature: definition.temperature,
+        maxTokens: definition.maxTokens,
+        timeoutMs: definition.timeoutMs,
+        responseFormat: 'json',
+        systemPrompt: prompt.systemPrompt,
+        prompt: userPrompt,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+
+    let model = await generateOnce(prompt.userPrompt);
+    this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
+    let responseMeta = payloadFingerprint(model.text);
+    let output;
+    try {
+      output = parseAndValidateProductIntakeModelText(model.text, parsed.currentDraft);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== ErrorCode.AGENT_INVALID_OUTPUT) {
+        throw error;
+      }
+      // One schema-repair retry only.
+      const repairPrompt = `${prompt.userPrompt}
+
+上次输出未通过 schema 校验。请重新输出：仅一个 JSON 对象；draftPatch 数组字段必须是 string[]；不要 markdown。`;
+      const repaired = await generateOnce(repairPrompt);
+      model = {
+        ...repaired,
+        usage: {
+          inputTokens: (model.usage.inputTokens ?? 0) + (repaired.usage.inputTokens ?? 0),
+          outputTokens: (model.usage.outputTokens ?? 0) + (repaired.usage.outputTokens ?? 0),
+          totalTokens: (model.usage.totalTokens ?? 0) + (repaired.usage.totalTokens ?? 0),
+          estimatedCost:
+            model.usage.estimatedCost == null && repaired.usage.estimatedCost == null
+              ? null
+              : (model.usage.estimatedCost ?? 0) + (repaired.usage.estimatedCost ?? 0),
+        },
+      };
+      responseMeta = payloadFingerprint(model.text);
+      output = parseAndValidateProductIntakeModelText(model.text, parsed.currentDraft);
+    }
+
+    this.logger.log({
+      requestId: request.requestId,
+      agent: definition.id,
+      version: definition.version,
+      status: 'COMPLETED',
+      promptHash: promptMeta.hash,
+      promptLength: promptMeta.length,
+      responseHash: responseMeta.hash,
+      responseLength: responseMeta.length,
+      inputTokens: model.usage.inputTokens ?? undefined,
+      outputTokens: model.usage.outputTokens ?? undefined,
+      totalTokens: model.usage.totalTokens ?? undefined,
+    });
+
+    return {
+      status: 'COMPLETED',
+      output: output as unknown as JsonObject,
+      usage: model.usage,
+    };
+  }
+
+  private async runMarketIntake(
+    request: InternalAgentRequest,
+    definition: AgentDefinition,
+  ): Promise<InternalAgentResponse> {
+    const parsed: MarketIntakeAgentInput = parseMarketIntakeInput(request.input);
+    const conversationText = parsed.recentConversation
+      .map((item) => `${item.role === 'user' ? '用户' : '助手'}：${item.content}`)
+      .join('\n');
+    const questionPlan = getMarketIntakeQuestionPlan(parsed.currentDraft, {
+      userAcknowledgedLimitedData: false,
+    });
+    const prompt = this.prompts.render(MARKET_INTAKE_PROMPT, MARKET_INTAKE_AGENT_VERSION, {
+      mode: parsed.mode,
+      locale: parsed.locale,
+      noDataAllowed: 'true',
+      improvingExisting: parsed.improvingExisting ? 'true' : 'false',
+      hasMarketMaterial: questionPlan.hasMarketMaterial ? 'true' : 'false',
+      userAcknowledgedLimitedData: questionPlan.userAcknowledgedLimitedData ? 'true' : 'false',
+      alreadyFilledFields: JSON.stringify(questionPlan.alreadyFilledFields),
+      nextPriorityFields: JSON.stringify(questionPlan.nextPriorityFields),
+      confirmedProductBriefJson: JSON.stringify(parsed.confirmedProductBrief),
+      currentDraftJson: JSON.stringify(compactMarketIntakeDraft(parsed.currentDraft)),
+      recentConversationText: conversationText || '（无）',
+      latestUserMessage: parsed.latestUserMessage,
+    });
+    const promptMeta = payloadFingerprint({
+      system: prompt.systemPrompt,
+      user: prompt.userPrompt,
+    });
+
+    const generateOnce = async (userPrompt: string) =>
+      this.models.generate({
+        agentId: definition.id,
+        tenantId: request.context.tenantId,
+        task: MARKET_INTAKE_AGENT_ID,
+        model: definition.defaultModel,
+        temperature: definition.temperature,
+        maxTokens: definition.maxTokens,
+        timeoutMs: definition.timeoutMs,
+        responseFormat: 'json',
+        systemPrompt: prompt.systemPrompt,
+        prompt: userPrompt,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+
+    let model = await generateOnce(prompt.userPrompt);
+    this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
+    let responseMeta = payloadFingerprint(model.text);
+    let output;
+    try {
+      output = parseAndValidateMarketIntakeModelText(model.text, parsed.currentDraft);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== ErrorCode.AGENT_INVALID_OUTPUT) {
+        throw error;
+      }
+      const repairPrompt = `${prompt.userPrompt}
+
+上次输出未通过 schema 校验。请重新输出：仅一个 JSON 对象；不要写入 userAcknowledgedLimitedData、metrics 或 MarketInsight；不要 markdown。`;
+      const repaired = await generateOnce(repairPrompt);
+      model = {
+        ...repaired,
+        usage: {
+          inputTokens: (model.usage.inputTokens ?? 0) + (repaired.usage.inputTokens ?? 0),
+          outputTokens: (model.usage.outputTokens ?? 0) + (repaired.usage.outputTokens ?? 0),
+          totalTokens: (model.usage.totalTokens ?? 0) + (repaired.usage.totalTokens ?? 0),
+          estimatedCost:
+            model.usage.estimatedCost == null && repaired.usage.estimatedCost == null
+              ? null
+              : (model.usage.estimatedCost ?? 0) + (repaired.usage.estimatedCost ?? 0),
+        },
+      };
+      responseMeta = payloadFingerprint(model.text);
+      output = parseAndValidateMarketIntakeModelText(model.text, parsed.currentDraft);
+    }
 
     this.logger.log({
       requestId: request.requestId,
