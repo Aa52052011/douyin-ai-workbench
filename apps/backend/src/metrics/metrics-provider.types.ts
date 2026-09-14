@@ -16,7 +16,7 @@ export type GetPostMetricsInput = {
   workspaceId: string;
   projectId: string;
   publicationId: string;
-  videoId: string;
+  videoId: string | null;
   platform: Platform;
   externalPostId: string;
   platformAccount?: MetricsPlatformAccountRef;

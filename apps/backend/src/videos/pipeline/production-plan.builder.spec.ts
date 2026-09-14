@@ -38,6 +38,17 @@ describe('ProductionPlanBuilder', () => {
     expect(JSON.stringify(plan.scenes)).not.toContain('Authorization');
   });
 
+  it('normalizes AI pronunciation without rewriting claims', () => {
+    const payload = {
+      ...MOCK_SCRIPT_OUTPUT,
+      hook: '如果你以为它只是一个会写文案的AI',
+      opening: MOCK_SCRIPT_OUTPUT.opening,
+    };
+    expect(buildVoiceText(payload)).toContain('A I');
+    expect(buildVoiceText(payload)).not.toContain('爆款保证');
+    expect(buildVoiceText(payload)).toContain(payload.opening);
+  });
+
   it('uses deterministic scene ids and is stable for the same input', () => {
     const first = buildProductionPlan({
       scriptId: SCRIPT_ID,

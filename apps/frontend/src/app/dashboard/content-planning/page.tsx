@@ -70,6 +70,7 @@ export default function ContentPlanningPage() {
         }
       })
       .catch((err: Error) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- token-gated initial load
   }, [accessToken]);
 
   async function generate(event: React.FormEvent) {

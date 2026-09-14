@@ -5,9 +5,12 @@ import {
   DEFAULT_DOUYIN_API_BASE_URL,
   DEFAULT_DOUYIN_OAUTH_BASE_URL,
   DOUYIN_OAUTH_SCOPE_USER_INFO,
+  evaluateGrantedScopes,
+  formatDouyinScopeParam,
   joinDouyinAuthorizeUrl,
   parseDouyinScopes,
   readDouyinOAuthConfig,
+  scopesForOAuthPurpose,
 } from './douyin-oauth.config.js';
 
 const KEYS = [
@@ -74,5 +77,8 @@ describe('Douyin OAuth config', () => {
   it('parses user_info as the least-privilege scope', () => {
     expect(parseDouyinScopes('user_info')).toEqual([DOUYIN_OAUTH_SCOPE_USER_INFO]);
     expect(parseDouyinScopes('user_info,video.create.bind')).not.toEqual([DOUYIN_OAUTH_SCOPE_USER_INFO]);
+    expect(formatDouyinScopeParam(scopesForOAuthPurpose('PUBLISHING'))).toBe('user_info,video.create.bind');
+    expect(evaluateGrantedScopes({ purpose: 'PUBLISHING', granted: ['user_info'] }).publishingEligibleByScope).toBe(false);
+    expect(evaluateGrantedScopes({ purpose: 'PUBLISHING', granted: ['user_info', 'video.create.bind'] }).publishingEligibleByScope).toBe(true);
   });
 });

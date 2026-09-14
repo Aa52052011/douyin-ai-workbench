@@ -148,19 +148,19 @@ function run() {
   assert.equal(noStrategyBody.positioningRunId, "pos-new");
 
   assert.equal(validatePlanningDays(7), null);
-  assert.equal(validatePlanningDays(3), "当前只支持 7 天内容计划");
-  assert.equal(validatePlanningDays(14), "当前只支持 7 天内容计划");
+  assert.equal(validatePlanningDays(3), "当前默认批次规模为 7 条");
+  assert.equal(validatePlanningDays(14), "当前默认批次规模为 7 条");
   assert.equal(validatePostsPerDay(1), null);
   assert.equal(validatePostsPerDay(5), null);
-  assert.equal(validatePostsPerDay(0), "每天发布数量需为 1-5 条");
-  assert.equal(validatePostsPerDay(6), "每天发布数量需为 1-5 条");
+  assert.equal(validatePostsPerDay(0), "每组条数需为 1-5");
+  assert.equal(validatePostsPerDay(6), "每组条数需为 1-5");
   assert.equal(expectedTopicCount(7, 2), 14);
   assert.equal(PLANNING_DAYS_V1, 7);
 
   const groups = groupTopicsByDay(validPayload.topics);
   assert.deepEqual(
     groups.map((item) => item.heading),
-    ["第 1 天", "第 2 天"],
+    ["第 1 条", "第 2 条"],
   );
   assert.equal(groups[0].topics.length, 2);
   assert.equal(groups[1].topics.length, 1);

@@ -138,6 +138,9 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
     const current = currentPositioningRecord(asArray<AgentRun>(runsResult.value));
     if (current?.output.accountPositioning) {
       facts.summary.positioningLine = current.output.accountPositioning;
+      facts.summary.targetAudience = current.output.targetAudience.description;
+      facts.summary.contentStyle = current.output.persona.tone;
+      facts.summary.recommendedLength = current.output.publishingStrategy.recommendedLength;
     }
   } else {
     facts.positioningValid = null;

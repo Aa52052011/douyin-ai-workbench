@@ -62,7 +62,7 @@ export function ScriptEditor({
         ))}
       </section>
       <LabeledTextarea id="script-ending" label="结尾" value={draft.ending ?? ""} disabled={pending} onChange={(ending) => onChange({ ...draft, ending })} />
-      <LabeledTextarea id="script-cta" label="CTA" value={draft.cta ?? ""} disabled={pending} onChange={(cta) => onChange({ ...draft, cta })} />
+      <LabeledTextarea id="script-cta" label="希望观众下一步做什么" value={draft.cta ?? ""} disabled={pending} onChange={(cta) => onChange({ ...draft, cta })} />
       <LabeledInput id="script-voice" label="配音风格" value={draft.voiceStyle ?? ""} disabled={pending} onChange={(voiceStyle) => onChange({ ...draft, voiceStyle })} />
       <LabeledInput id="script-visual" label="视觉风格" value={draft.visualStyle ?? ""} disabled={pending} onChange={(visualStyle) => onChange({ ...draft, visualStyle })} />
       <LabeledTextarea

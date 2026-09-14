@@ -7,18 +7,13 @@ import { statusLabel } from "./status-label";
 const projectId = "proj_1";
 
 function flattenNavHrefs(id: string): string[] {
-  return PROJECT_NAV.flatMap((group) => {
-    if ("href" in group) {
-      return [group.href(id)];
-    }
-    return group.items.map((item) => item.href(id));
-  });
+  return PROJECT_NAV.map((item) => item.href(id));
 }
 
 function run() {
   assert.deepEqual(
     GLOBAL_NAV.map((item) => item.label),
-    ["工作台", "项目", "设置"],
+    ["工作台", "项目", "发布与数据", "设置"],
   );
   const visibleLabels = GLOBAL_NAV.map((item) => item.label as string);
   for (const label of HIDDEN_ENGINEERING_NAV_LABELS) {
@@ -27,26 +22,20 @@ function run() {
   assert.equal(GLOBAL_NAV[0].match("/dashboard"), true);
   assert.equal(GLOBAL_NAV[0].match("/dashboard/projects"), false);
   assert.equal(GLOBAL_NAV[1].match("/dashboard/projects/abc"), true);
-  assert.equal(GLOBAL_NAV[2].match("/dashboard/settings"), true);
+  assert.equal(GLOBAL_NAV[2].match("/dashboard/monitoring"), true);
+  assert.equal(GLOBAL_NAV[3].match("/dashboard/settings"), true);
 
   const hrefs = flattenNavHrefs(projectId);
   assert.deepEqual(hrefs, [
     `/dashboard/projects/${projectId}`,
-    `/dashboard/projects/${projectId}/product`,
     `/dashboard/projects/${projectId}/positioning`,
-    `/dashboard/projects/${projectId}/market/research`,
-    `/dashboard/projects/${projectId}/market/analysis`,
-    `/dashboard/projects/${projectId}/strategy`,
     `/dashboard/projects/${projectId}/content/plans`,
     `/dashboard/projects/${projectId}/content/scripts`,
     `/dashboard/projects/${projectId}/content/videos`,
     `/dashboard/projects/${projectId}/publish`,
-    `/dashboard/projects/${projectId}/performance`,
   ]);
-  assert.equal(
-    PROJECT_NAV.filter((group) => !("href" in group)).map((group) => group.label).join(","),
-    "基础,市场与策略,内容生产,发布与数据",
-  );
+  assert.equal(PROJECT_NAV.length, 6);
+  assert.equal(PROJECT_NAV.some((item) => String(item.label) === "Agents" || String(item.label).includes("Agent")), false);
   assert.equal(isProjectNavActive(`/dashboard/projects/${projectId}`, `/dashboard/projects/${projectId}`, true), true);
   assert.equal(isProjectNavActive(`/dashboard/projects/${projectId}/product`, `/dashboard/projects/${projectId}`, true), false);
   assert.equal(

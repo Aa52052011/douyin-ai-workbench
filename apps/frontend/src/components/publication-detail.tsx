@@ -1,4 +1,7 @@
+"use client";
+
 import type { PublicationView } from "../lib/publication.types";
+import { TechnicalDetailsPanel } from "./ui/error-state";
 
 export function PublicationDetail({ view }: { view: PublicationView }) {
   return (
@@ -17,13 +20,13 @@ export function PublicationDetail({ view }: { view: PublicationView }) {
           </a>
         </p>
       ) : null}
-      {view.externalPostId ? <p>作品 ID：{view.externalPostId}</p> : null}
       {view.createdAtLabel ? <p>创建时间：{view.createdAtLabel}</p> : null}
       {view.failureMessage ? (
         <p className="text-red-600" role="alert">
           {view.failureMessage}
         </p>
       ) : null}
+      {view.externalPostId ? <TechnicalDetailsPanel details={`作品识别信息已随这次登记提交。`} /> : null}
     </article>
   );
 }

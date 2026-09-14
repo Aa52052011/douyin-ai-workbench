@@ -27,14 +27,14 @@ export function expectedTopicCount(days: number, postsPerDay: number): number {
 
 export function validatePlanningDays(value: number): string | null {
   if (value !== PLANNING_DAYS_V1) {
-    return "当前只支持 7 天内容计划";
+    return "当前默认批次规模为 7 条";
   }
   return null;
 }
 
 export function validatePostsPerDay(value: number): string | null {
   if (!Number.isInteger(value) || value < POSTS_PER_DAY_MIN || value > POSTS_PER_DAY_MAX) {
-    return `每天发布数量需为 ${POSTS_PER_DAY_MIN}-${POSTS_PER_DAY_MAX} 条`;
+    return `每组条数需为 ${POSTS_PER_DAY_MIN}-${POSTS_PER_DAY_MAX}`;
   }
   return null;
 }
@@ -149,7 +149,7 @@ export function humanizePlanningError(error: unknown, action: "generate" | "conf
     return "所选推广策略已不可用，请重新选择。";
   }
   if (code === "CONTENT_PLAN_DAYS_NOT_AVAILABLE") {
-    return "当前只支持 7 天内容计划。";
+    return "当前默认批次规模为 7 条。";
   }
   if (code === "CONTENT_PLAN_CONFLICT") {
     return action === "confirm" ? "当前计划状态不能确认。" : action === "archive" ? "当前计划状态不能归档。" : "当前计划状态不允许此操作。";

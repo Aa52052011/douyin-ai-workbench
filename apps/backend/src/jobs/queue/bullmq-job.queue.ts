@@ -11,9 +11,9 @@ export class BullMqJobQueue implements JobQueue, OnModuleDestroy {
   private readonly connection: Redis;
   private readonly queue: Queue;
 
-  constructor(redisUrl: string) {
+  constructor(redisUrl: string, options?: { queueName?: string }) {
     this.connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
-    this.queue = new Queue(ACF_JOB_QUEUE_NAME, { connection: this.connection });
+    this.queue = new Queue(options?.queueName ?? ACF_JOB_QUEUE_NAME, { connection: this.connection });
   }
 
   async enqueue(jobId: string): Promise<void> {

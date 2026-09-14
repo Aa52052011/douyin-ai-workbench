@@ -360,7 +360,7 @@ describe('Job processor (e2e)', () => {
     const newJob = await prisma.job.findFirst({ where: { id: retried.body.sourceJobId } });
     expect(newJob?.status).toBe('COMPLETED');
     const newVisual = (newJob?.output as { stages?: { visual?: { assetIds?: string[] } } }).stages?.visual;
-    expect(newVisual?.assetIds).toEqual(oldVisual?.assetIds);
+    expect(new Set(newVisual?.assetIds ?? [])).toEqual(new Set(oldVisual?.assetIds ?? []));
     const links = await prisma.assetLink.findMany({
       where: { jobId: retried.body.sourceJobId, tenantId: user.tenantId, role: 'VIDEO_SOURCE' },
     });

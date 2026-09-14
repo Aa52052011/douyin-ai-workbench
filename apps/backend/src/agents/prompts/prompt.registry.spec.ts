@@ -68,14 +68,19 @@ describe('PromptRegistry', () => {
       contentPlanContext: '{}',
       previousScriptSummaries: '[]',
       strategyContext: '{}',
+      accountMemoryContext: '{}',
+      referenceContext: '{}',
       topic: '{}',
       positioning: '{}',
     });
     expect(rendered.version).toBe('v1');
     expect(rendered.systemPrompt).toContain('只输出一个 JSON 对象');
-    expect(rendered.systemPrompt).toContain('连续内容规划');
+    expect(rendered.systemPrompt).toContain('连续内容批次');
+    expect(rendered.systemPrompt).toContain('accountMemoryContext');
+    expect(rendered.systemPrompt).toContain('referenceContext');
     expect(rendered.userPrompt).toContain('目标时长：30');
     expect(rendered.userPrompt).toContain('本周内容规划上下文 JSON');
+    expect(rendered.userPrompt).toContain('参考结构模式 JSON');
   });
 
   it('loads market.intelligence:v1', () => {
@@ -153,6 +158,25 @@ describe('PromptRegistry', () => {
     expect(rendered.systemPrompt).toContain('低数据');
     expect(rendered.userPrompt).toContain('我想研究关键词');
     expect(rendered.userPrompt).toContain('是否已有市场素材');
+  });
+
+  it('loads performance.analysis:v1 without credentials', () => {
+    const registry = new PromptRegistry();
+    const rendered = registry.render('performance.analysis', 'v1', {
+      metricsSummary: '{"latestPlayCount":1}',
+      dataSufficiency: 'SPARSE',
+      benchmarkContext: 'NONE',
+      evidenceIndex: '[]',
+      scriptSnapshot: '{"title":"hook"}',
+      contentPlanSnapshot: '{"title":"plan"}',
+      publicationSnapshot: '{"id":"p1"}',
+    });
+    expect(rendered.systemPrompt).toContain('data-first');
+    expect(rendered.systemPrompt).toContain('no fabricated metrics');
+    expect(rendered.systemPrompt).toContain('no causal overclaim');
+    expect(rendered.systemPrompt).toContain('no benchmark invention');
+    expect(rendered.systemPrompt).not.toMatch(/sk-|Bearer /);
+    expect(rendered.userPrompt).toContain('SPARSE');
   });
 
   it('aligns campaign.strategy evidence refs with validator allowlists', () => {

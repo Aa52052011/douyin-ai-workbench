@@ -22,11 +22,12 @@ describe.skipIf(!enabled)('BullMQ redis integration', () => {
 
   it('enqueues with database job id and payload { jobId } only', async () => {
     const url = process.env.REDIS_URL as string;
-    queue = new BullMqJobQueue(url);
+    const isolatedQueue = `${ACF_JOB_QUEUE_NAME}-it-${randomUUID()}`;
+    queue = new BullMqJobQueue(url, { queueName: isolatedQueue });
     await queue.enqueue(jobId);
     await queue.enqueue(jobId);
     connection = new Redis(url, { maxRetriesPerRequest: null });
-    inspect = new Queue(ACF_JOB_QUEUE_NAME, { connection });
+    inspect = new Queue(isolatedQueue, { connection });
     const job = await inspect.getJob(jobId);
     expect(job).toBeTruthy();
     expect(job?.id).toBe(jobId);
@@ -34,5 +35,7 @@ describe.skipIf(!enabled)('BullMQ redis integration', () => {
     expect(Object.keys(job?.data ?? {})).toEqual(['jobId']);
     const spec = buildQueueJob(jobId);
     expect(spec.opts.jobId).toBe(jobId);
+    await inspect.remove(jobId);
+    expect(await inspect.getJob(jobId)).toBeUndefined();
   });
 });

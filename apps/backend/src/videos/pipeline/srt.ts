@@ -77,6 +77,52 @@ export function renderSrt(cues: SubtitleCue[]): string {
     .join('\n');
 }
 
+export function reflowOverflowCues(cues: SubtitleCue[], maxChars = SUBTITLE_TARGET_CHARS): SubtitleCue[] {
+  const expanded: Array<{ start: number; end: number; texts: string[] }> = [];
+  for (const cue of cues) {
+    const text = cue.text.replace(/\s+/g, ' ').trim();
+    if (!text) {
+      continue;
+    }
+    if (semanticCharCount(text) <= maxChars && !text.includes('\n')) {
+      expanded.push({ start: cue.start, end: cue.end, texts: [text] });
+      continue;
+    }
+    const pieces = wrapByMaxChars(text, maxChars);
+    expanded.push({ start: cue.start, end: cue.end, texts: pieces.length ? pieces : [text.slice(0, maxChars)] });
+  }
+  const out: SubtitleCue[] = [];
+  for (const block of expanded) {
+    const span = Math.max(SUBTITLE_TIME_EPSILON, block.end - block.start);
+    const slice = span / block.texts.length;
+    block.texts.forEach((text, index) => {
+      const start = block.start + slice * index;
+      const end = index === block.texts.length - 1 ? block.end : block.start + slice * (index + 1);
+      out.push({ start, end, text });
+    });
+  }
+  return out;
+}
+
+function wrapByMaxChars(text: string, maxChars: number): string[] {
+  const atoms = text.match(ATOM) ?? [text];
+  const pieces: string[] = [];
+  let current = '';
+  for (const atom of atoms) {
+    const next = current + atom;
+    if (current && semanticCharCount(next) > maxChars && !PUNCT_ONLY.test(atom)) {
+      pieces.push(current.trim());
+      current = atom;
+    } else {
+      current = next;
+    }
+  }
+  if (current.trim()) {
+    pieces.push(current.trim());
+  }
+  return pieces;
+}
+
 export function parseSrt(body: string): SubtitleCue[] {
   const blocks = body.trim().split(/\n\s*\n/);
   return blocks.map((block) => {

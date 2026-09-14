@@ -8,6 +8,7 @@ import {
   CONTENT_PLANNING_TIMEOUT_MS,
   CONTENT_PLAN_MAX_POSTS_PER_DAY,
   CONTENT_PLAN_V1_DAYS,
+  productionLlmTimeoutMs,
   type AgentDefinition,
 } from '../agent.types.js';
 import { validateAccountPositioningOutput } from './account-positioning.agent.js';
@@ -40,7 +41,7 @@ export const contentPlanningDefinition: AgentDefinition = {
   version: CONTENT_PLANNING_AGENT_VERSION,
   description: '根据账号定位生成 7 天结构化内容规划。',
   capabilities: ['content-planning', 'structured-output'],
-  timeoutMs: CONTENT_PLANNING_TIMEOUT_MS,
+  timeoutMs: productionLlmTimeoutMs(CONTENT_PLANNING_TIMEOUT_MS),
   defaultModel: process.env.MODEL_NAME?.trim() || undefined,
   temperature: 0.45,
   maxTokens: 6000,
@@ -60,6 +61,7 @@ export const contentPlanningDefinition: AgentDefinition = {
       campaignStrategy: { type: 'object' },
       trendData: { type: 'object' },
       performanceFeedback: { type: 'object' },
+      learningContext: { type: 'object' },
     },
   },
   outputSchema: {
@@ -119,6 +121,7 @@ export function parseContentPlanningInput(input: unknown): ContentPlanningInput 
     campaignStrategy: optionalCampaignStrategy(input.campaignStrategy),
     trendData: optionalTrendData(input.trendData),
     performanceFeedback: optionalPerformanceFeedback(input.performanceFeedback),
+    learningContext: optionalLearningContext(input.learningContext),
   };
 }
 
@@ -369,6 +372,64 @@ function optionalPerformanceFeedback(value: unknown): CompactPerformanceFeedback
     throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
   }
   return value as CompactPerformanceFeedback;
+}
+
+function optionalLearningContext(value: unknown): ContentPlanningInput['learningContext'] {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
+  }
+  const compact = (rows: unknown) =>
+    Array.isArray(rows)
+      ? rows
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+          .slice(0, 20)
+          .map((item) => ({
+            key: String(item.key ?? ''),
+            summary: String(item.summary ?? ''),
+            supportCount: typeof item.supportCount === 'number' ? item.supportCount : 0,
+            status: String(item.status ?? 'candidate'),
+          }))
+      : [];
+  return {
+    confirmed: compact(value.confirmed),
+    candidate: compact(value.candidate),
+    ...(Array.isArray(value.latestRecommendations)
+      ? {
+          latestRecommendations: value.latestRecommendations
+            .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+            .slice(0, 8)
+            .map((item) => ({
+              actionLabel: String(item.actionLabel ?? item.action ?? ''),
+              rationale: String(item.rationale ?? ''),
+            })),
+        }
+      : {}),
+    ...(value.previousBatchSummary && typeof value.previousBatchSummary === 'object'
+      ? {
+          previousBatchSummary: {
+            planId:
+              typeof (value.previousBatchSummary as Record<string, unknown>).planId === 'string'
+                ? ((value.previousBatchSummary as Record<string, unknown>).planId as string)
+                : undefined,
+            title:
+              typeof (value.previousBatchSummary as Record<string, unknown>).title === 'string'
+                ? ((value.previousBatchSummary as Record<string, unknown>).title as string)
+                : null,
+            sampleSize:
+              typeof (value.previousBatchSummary as Record<string, unknown>).sampleSize === 'number'
+                ? ((value.previousBatchSummary as Record<string, unknown>).sampleSize as number)
+                : 0,
+            publicationsConsidered:
+              typeof (value.previousBatchSummary as Record<string, unknown>).publicationsConsidered === 'number'
+                ? ((value.previousBatchSummary as Record<string, unknown>).publicationsConsidered as number)
+                : 0,
+          },
+        }
+      : {}),
+  };
 }
 
 function requireInt(record: Record<string, unknown>, key: string): number {

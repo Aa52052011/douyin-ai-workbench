@@ -26,6 +26,10 @@ export type ScriptGenerationInput = {
   previousScriptSummaries?: CompactPreviousScriptSummary[];
   /** Server-assembled strategy digest when available (12.12P). */
   strategyContext?: CompactStrategyContext;
+  /** Step 13.5 — compact account memory context (bounded). */
+  accountMemoryContext?: Record<string, unknown>;
+  /** Step 13.6 — optional compact reference structure context (bounded). */
+  referenceContext?: Record<string, unknown>;
 };
 
 export type ScriptSection = {
@@ -63,6 +67,8 @@ export const SCRIPT_GENERATION_INPUT_KEYS = [
   'contentPlanContext',
   'previousScriptSummaries',
   'strategyContext',
+  'accountMemoryContext',
+  'referenceContext',
 ] as const;
 
 export const SCRIPT_FORBIDDEN_KEYS = FORBIDDEN_CONTEXT_KEYS;

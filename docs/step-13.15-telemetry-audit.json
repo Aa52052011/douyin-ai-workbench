@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "13.15A.v1",
+  "policy": "Do not expand Prisma for dogfood-only KPIs. Prefer derive, else artifact.",
+  "entities": {
+    "Video": "SUPPORTED",
+    "Job": "SUPPORTED",
+    "Asset": "SUPPORTED",
+    "AssetLink": "SUPPORTED",
+    "UsageEvent": "SUPPORTED",
+    "CostLedger": "SUPPORTED",
+    "Publication": "SUPPORTED",
+    "PublicationMetricSnapshot": "SUPPORTED",
+    "PerformanceFeedback": "DERIVABLE (service, not a table)",
+    "AccountMemorySnapshot": "SUPPORTED",
+    "ContentPlan": "SUPPORTED",
+    "Script": "SUPPORTED",
+    "StrategyAdjustmentRecommendation": "SUPPORTED",
+    "AgentRun": "SUPPORTED"
+  },
+  "kpis": [
+    { "kpi": "ids: batch/topic/script/video/publication", "status": "SUPPORTED" },
+    { "kpi": "job created/completed/failed/retry/stuck", "status": "SUPPORTED / DERIVABLE (stuck via heartbeat)" },
+    { "kpi": "quality PASS/BEST_AVAILABLE; BLOCKED not finalized", "status": "SUPPORTED / DERIVABLE" },
+    { "kpi": "usage tokens/chars/images/videoSeconds; mock vs real provider id", "status": "SUPPORTED" },
+    { "kpi": "cost UNPRICED vs priced; multi-currency no FX", "status": "SUPPORTED" },
+    { "kpi": "metrics windows + fingerprint idempotency", "status": "SUPPORTED" },
+    { "kpi": "learning recs + memory versions", "status": "SUPPORTED" },
+    { "kpi": "time-to-script/video from timestamps", "status": "DERIVABLE" },
+    { "kpi": "first-pass / regenerate heuristic", "status": "DERIVABLE" },
+    { "kpi": "asset reuse vs generated", "status": "DERIVABLE" },
+    { "kpi": "human minutes, 1-5 scores, intervention class A-D", "status": "MISSING → daily artifact" },
+    { "kpi": "recommendation accepted + next-batch observed outcome", "status": "MISSING → weekly artifact" },
+    { "kpi": "memory useful/stale/incorrect labels", "status": "MISSING → weekly artifact" },
+    { "kpi": "Wanx whyGenerated / waste", "status": "MISSING → daily artifact (optional future field)" },
+    { "kpi": "comment AI auto-reply", "status": "MISSING (product: not validated; human-only replies)" }
+  ],
+  "recommendedFutureFields": [
+    "HumanReviewSession (minutes, scores, publishable) — only if it becomes product SoT",
+    "RecommendationAdoption (accepted, appliedBatchId, observedOutcome) — only if productized"
+  ],
+  "doNotAddNow": true
+}

@@ -152,6 +152,21 @@ export function validateRuntimeEnvironment(options?: {
     issues.push(safeIssue(error, 'MEDIA_TTS_PROVIDER is invalid'));
   }
 
+  const dhRaw = (env.MEDIA_DIGITAL_HUMAN_PROVIDER ?? '').trim().toLowerCase();
+  if (dhRaw && dhRaw !== 'disabled' && dhRaw !== 'mock') {
+    warnings.push('MEDIA_DIGITAL_HUMAN_PROVIDER is not a configured provider; digital human remains unavailable');
+  }
+  if (production && dhRaw === 'mock') {
+    issues.push('MEDIA_DIGITAL_HUMAN_PROVIDER=mock is not allowed in production');
+  }
+  const cloneRaw = (env.MEDIA_VOICE_CLONE_PROVIDER ?? '').trim().toLowerCase();
+  if (cloneRaw && cloneRaw !== 'disabled' && cloneRaw !== 'mock') {
+    warnings.push('MEDIA_VOICE_CLONE_PROVIDER is not a configured provider; voice clone remains unavailable');
+  }
+  if (production && cloneRaw === 'mock') {
+    issues.push('MEDIA_VOICE_CLONE_PROVIDER=mock is not allowed in production');
+  }
+
   try {
     const compose = resolveComposeProviderId(env);
     if (compose === 'ffmpeg' && options?.probeFfmpeg && !test) {

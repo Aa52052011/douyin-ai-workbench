@@ -14,6 +14,10 @@ import { MarketEvidenceService } from './market-evidence.service.js';
 import { toPublicMarketInsight, type MarketInsightPublic } from './market-insights.mapper.js';
 import type { ProductBriefPayload } from './market.types.js';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 export type MarketInsightCreateResult = {
   insight: MarketInsightPublic;
   run: AgentRunPublic;
@@ -84,9 +88,16 @@ export class MarketInsightsService {
     }
 
     const marketEvidence = await this.evidence.getForResearch(auth, research.id, meta.workspaceHint);
+    const queryContext =
+      research.queryContext && typeof research.queryContext === 'object'
+        ? (research.queryContext as Record<string, unknown>)
+        : {};
     const agentInput = {
       productBrief: research.productBriefSnapshot as ProductBriefPayload,
       marketEvidence,
+      ...(isRecord(queryContext.normalizedMarketContext)
+        ? { normalizedMarketContext: queryContext.normalizedMarketContext }
+        : {}),
       ...(input.userFocus?.trim() ? { userFocus: input.userFocus.trim() } : {}),
     };
 
@@ -165,6 +176,7 @@ export class MarketInsightsService {
         workspaceId: true,
         projectId: true,
         productBriefSnapshot: true,
+        queryContext: true,
       },
     });
     if (!row) {

@@ -4,6 +4,7 @@ import {
   ACCOUNT_POSITIONING_AGENT_ID,
   ACCOUNT_POSITIONING_AGENT_VERSION,
   DEFAULT_AGENT_TIMEOUT_MS,
+  productionLlmTimeoutMs,
   type AgentDefinition,
 } from '../agent.types.js';
 import {
@@ -29,7 +30,7 @@ export const accountPositioningDefinition: AgentDefinition = {
   version: ACCOUNT_POSITIONING_AGENT_VERSION,
   description: '根据账号基础信息生成结构化定位方案。',
   capabilities: ['account-positioning', 'structured-output'],
-  timeoutMs: DEFAULT_AGENT_TIMEOUT_MS,
+  timeoutMs: productionLlmTimeoutMs(DEFAULT_AGENT_TIMEOUT_MS),
   defaultModel: process.env.MODEL_NAME?.trim() || undefined,
   temperature: 0.4,
   maxTokens: 2500,

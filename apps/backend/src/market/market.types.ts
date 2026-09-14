@@ -163,6 +163,8 @@ export type ProductBriefPayload = {
   targetAudience?: string;
   priceRange?: string;
   businessGoal: string;
+  /** Optional normalized code; legacy briefs omit this. */
+  goalCode?: string;
   conversionGoal?: string;
   constraints?: string[];
   tone?: string;

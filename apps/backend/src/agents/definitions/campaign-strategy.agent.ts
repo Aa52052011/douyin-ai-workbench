@@ -11,6 +11,7 @@ import {
   CAMPAIGN_STRATEGY_AGENT_ID,
   CAMPAIGN_STRATEGY_AGENT_VERSION,
   CAMPAIGN_STRATEGY_TIMEOUT_MS,
+  productionLlmTimeoutMs,
   type AgentDefinition,
 } from '../agent.types.js';
 
@@ -20,7 +21,7 @@ export const campaignStrategyDefinition: AgentDefinition = {
   version: CAMPAIGN_STRATEGY_AGENT_VERSION,
   description: '基于 ProductBrief、MarketInsight、账号定位与历史反馈生成项目级推广策略。',
   capabilities: ['campaign-strategy', 'structured-output', 'evidence-grounded'],
-  timeoutMs: CAMPAIGN_STRATEGY_TIMEOUT_MS,
+  timeoutMs: productionLlmTimeoutMs(CAMPAIGN_STRATEGY_TIMEOUT_MS),
   defaultModel: process.env.MODEL_NAME?.trim() || undefined,
   temperature: 0.3,
   maxTokens: 3500,

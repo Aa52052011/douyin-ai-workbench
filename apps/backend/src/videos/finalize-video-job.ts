@@ -2,6 +2,8 @@ import { AssetLinkRole, AssetStatus, AssetType, JobStatus, Prisma, PrismaClient,
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
 import { asPipelineOutput } from './pipeline/stage-context.js';
+import type { QualityDisposition } from './quality/quality.types.js';
+import { canFinalizeDisposition } from './quality/quality-check.js';
 
 export type FinalizeJobResult = {
   jobId: string;
@@ -29,6 +31,10 @@ async function finalizeInTx(
   });
   if (!job?.videoId) {
     throw new AppError(ErrorCode.JOB_NOT_FOUND);
+  }
+  const gateOutput = asPipelineOutput(job.output);
+  if (!canFinalizeDisposition(gateOutput.qualityGate?.qualityDisposition as QualityDisposition | undefined, Boolean(gateOutput.qualityGate))) {
+    throw new AppError(ErrorCode.QUALITY_GATE_BLOCKED, '自动制作未能完成，请重试或调整素材。');
   }
   if (job.status === JobStatus.CANCELLED || job.status === JobStatus.FAILED) {
     throw new AppError(ErrorCode.JOB_CONFLICT);
@@ -103,7 +109,18 @@ async function finalizeInTx(
     });
   }
 
-  const duration = input.duration ?? asset.duration ?? video.duration;
+      await tx.asset.update({
+        where: { id_tenantId: { id: asset.id, tenantId: job.tenantId } },
+        data: {
+          libraryVisible: true,
+          metadata: {
+            ...((asset.metadata && typeof asset.metadata === 'object' ? asset.metadata : {}) as object),
+            composeRole: 'final',
+          } as never,
+        },
+      });
+
+      const duration = input.duration ?? asset.duration ?? video.duration;
   const now = new Date();
   await tx.video.update({
     where: { id_tenantId: { id: video.id, tenantId: job.tenantId } },
@@ -140,6 +157,63 @@ async function finalizeInTx(
     },
   });
 
+  // Idempotent production usage for final output (preview/list must not increment).
+  const usageKey = {
+    tenantId: job.tenantId,
+    assetId: asset.id,
+    videoId: video.id,
+    usageType: 'VIDEO_OUTPUT',
+  };
+  const existingUsage = await tx.assetUsage.findUnique({
+    where: { tenantId_assetId_videoId_usageType: usageKey },
+  });
+  if (!existingUsage) {
+    await tx.assetUsage.create({
+      data: {
+        ...usageKey,
+        workspaceId: job.workspaceId,
+        projectId: job.projectId,
+        jobId: job.id,
+      },
+    });
+    await tx.asset.update({
+      where: { id_tenantId: { id: asset.id, tenantId: job.tenantId } },
+      data: { usedCount: { increment: 1 }, lastUsedAt: now },
+    });
+  }
+
+  const timeline = output.editingTimeline;
+  if (timeline) {
+    for (const clip of timeline.tracks.visual) {
+      if (!clip.assetId) {
+        continue;
+      }
+      await recordIdempotentUsage(tx, {
+        tenantId: job.tenantId,
+        workspaceId: job.workspaceId,
+        projectId: job.projectId,
+        assetId: clip.assetId,
+        videoId: video.id,
+        jobId: job.id,
+        usageType: `SHOT_VISUAL:${clip.sequence}`,
+        now,
+      });
+    }
+    const voiceId = timeline.tracks.voice[0]?.assetId;
+    if (voiceId) {
+      await recordIdempotentUsage(tx, {
+        tenantId: job.tenantId,
+        workspaceId: job.workspaceId,
+        projectId: job.projectId,
+        assetId: voiceId,
+        videoId: video.id,
+        jobId: job.id,
+        usageType: 'VOICE_AUDIO',
+        now,
+      });
+    }
+  }
+
   return { jobId: job.id, videoId: video.id, outputAssetId: asset.id, reused: Boolean(outputLink || video.outputAssetId) };
 }
 
@@ -156,4 +230,50 @@ function healableCompleted(
   const linkOk = !link || link.assetId === assetId;
   const sourceOk = !video.sourceJobId || video.sourceJobId === job.id;
   return pointerOk && linkOk && sourceOk && Boolean(video.outputAssetId || link);
+}
+
+async function recordIdempotentUsage(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string;
+    workspaceId: string;
+    projectId: string;
+    assetId: string;
+    videoId: string;
+    jobId: string;
+    usageType: string;
+    now: Date;
+  },
+) {
+  const key = {
+    tenantId: input.tenantId,
+    assetId: input.assetId,
+    videoId: input.videoId,
+    usageType: input.usageType,
+  };
+  const existing = await tx.assetUsage.findUnique({
+    where: { tenantId_assetId_videoId_usageType: key },
+  });
+  if (existing) {
+    return;
+  }
+  const asset = await tx.asset.findFirst({
+    where: { id: input.assetId, tenantId: input.tenantId },
+    select: { id: true },
+  });
+  if (!asset) {
+    return;
+  }
+  await tx.assetUsage.create({
+    data: {
+      ...key,
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      jobId: input.jobId,
+    },
+  });
+  await tx.asset.update({
+    where: { id_tenantId: { id: input.assetId, tenantId: input.tenantId } },
+    data: { usedCount: { increment: 1 }, lastUsedAt: input.now },
+  });
 }

@@ -48,6 +48,7 @@ export type VideoHistoryItemView = {
   statusLabel: string;
   durationLabel: string;
   readable: boolean;
+  versionLabel?: string;
 };
 
 export type VideoView = {
@@ -63,6 +64,8 @@ export type VideoView = {
   completedAtLabel: string;
   failedStageLabel: string;
   failureMessage: string;
+  qualityLabel?: string;
+  qualitySummary: string[];
 };
 
 export const VIDEO_RAW_CONTRACT_TERMS = [

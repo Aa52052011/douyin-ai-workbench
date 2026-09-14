@@ -1,13 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { EmptyState } from "../../../../../../components/empty-state";
+import { FinalReviewChecklistV4 } from "../../../../../../components/final-review-checklist";
+import { ManualPublishGuideV4 } from "../../../../../../components/manual-publish-guide";
+import { ProductionStatusBadge } from "../../../../../../components/production-status-badge";
 import { PageHeader } from "../../../../../../components/page-header";
+import { HumanReviewBar } from "../../../../../../components/ui/human-review-bar";
+import { AITaskState } from "../../../../../../components/ui/ai-task-state";
+import { ProductErrorState } from "../../../../../../components/ui/error-state";
+import { useToast } from "../../../../../../components/ui/toast";
 import { VideoDetail } from "../../../../../../components/video-detail";
 import { VideoHistory } from "../../../../../../components/video-history";
+import { VideoProductionContextHeaderV4 } from "../../../../../../components/video-production-context-header";
 import { VideoSourceForm } from "../../../../../../components/video-source-form";
+import { VideoVariantPanelV4 } from "../../../../../../components/video-variant-panel";
 import { WorkspacePageShell } from "../../../../../../components/workspace-page-shell";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
@@ -29,7 +37,9 @@ import {
 } from "../../../../../../lib/video.form";
 import { createVideoPoller, isVideoPollActive } from "../../../../../../lib/video.polling";
 import type { VideoRecord } from "../../../../../../lib/video.types";
-import { parsedVideoView, videoHistoryViews } from "../../../../../../lib/video.view";
+import { parsedVideoView, videoHistoryViews, videoStatusLabel } from "../../../../../../lib/video.view";
+import { videoAiTaskState, videoLeaveCopy, isPortraitVideo } from "../../../../../../lib/ux/video-production-v4";
+import { scriptStatusLabel } from "../../../../../../lib/script.view";
 
 function ContentVideosPageInner() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -50,9 +60,14 @@ function ContentVideosPageInner() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [downloadStarted, setDownloadStarted] = useState(false);
+  const [reviewAccepted, setReviewAccepted] = useState(false);
+  const [variant, setVariant] = useState<"vertical" | "landscape">("vertical");
   const [preview, setPreview] = useState<{ id: string; url: string } | null>(null);
   const [previewFailedId, setPreviewFailedId] = useState<string | null>(null);
+  const [prodTab, setProdTab] = useState<"all" | "pending" | "running" | "done" | "failed">("all");
   const pollerRef = useRef<ReturnType<typeof createVideoPoller> | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (!accessToken || !projectId) {
@@ -92,7 +107,13 @@ function ContentVideosPageInner() {
   }, [accessToken, projectId, queryScriptId]);
 
   const usableScripts = eligibleScripts(scripts);
-  const scriptVideos = scriptId ? videosForScript(videos, scriptId) : videos;
+  const scriptVideos = (scriptId ? videosForScript(videos, scriptId) : videos).filter((item) => {
+    if (prodTab === "pending") return item.status === "PENDING";
+    if (prodTab === "running") return item.status === "RUNNING" || item.status === "PROCESSING";
+    if (prodTab === "done") return item.status === "COMPLETED";
+    if (prodTab === "failed") return item.status === "FAILED";
+    return true;
+  });
   const current =
     (selectedVideoId ? videos.find((item) => item.id === selectedVideoId) : null) ??
     (scriptId ? latestVideoForScript(videos, scriptId) : null);
@@ -100,6 +121,16 @@ function ContentVideosPageInner() {
   const currentId = current?.id ?? "";
   const currentActive = current ? isVideoPollActive(current) : false;
   const previewPath = current && canPreviewVideo(current) ? current.outputAsset?.contentPath ?? "" : "";
+  const selectedScript = usableScripts.find((item) => item.id === scriptId) ?? null;
+  const portrait = isPortraitVideo(current?.width, current?.height);
+  const taskState = videoAiTaskState(current?.status);
+  const leaveCopy = videoLeaveCopy(current?.status);
+
+  useEffect(() => {
+    setReviewAccepted(false);
+    setDownloadStarted(false);
+    setVariant("vertical");
+  }, [currentId]);
 
   useEffect(() => {
     if (!accessToken || !currentId || !currentActive) {
@@ -210,7 +241,9 @@ function ContentVideosPageInner() {
       link.download = file.filename;
       link.click();
       URL.revokeObjectURL(url);
-      setExportMessage("视频已导出");
+      setDownloadStarted(true);
+      setExportMessage("浏览器已开始下载。是否保存到电脑由浏览器决定。");
+      toast("已开始下载");
     } catch (error) {
       setActionError(humanizeVideoError(error, "export"));
     } finally {
@@ -222,32 +255,33 @@ function ContentVideosPageInner() {
     <aside className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
       {canRetryVideo(current.status) ? (
         <div className="space-y-2">
-          <button className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={pending} onClick={() => void retry()}>
+          <button className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={pending} onClick={() => void retry()} title="从失败位置继续，尽量复用已完成内容">
             重试生成
           </button>
-          <p className="text-xs text-neutral-500">继续未完成的生成，尽量复用已完成的画面、配音和字幕。</p>
+          <p className="text-xs text-neutral-500">从失败位置继续，尽量复用已完成的画面、配音和字幕。</p>
         </div>
       ) : null}
-      {canExportVideo(current.status) ? (
-        <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void download()}>
-          下载视频
+      {canExportVideo(current.status) && reviewAccepted ? (
+        <button className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={pending} onClick={() => void download()}>
+          {variant === "landscape" ? "下载横版视频" : "下载竖版视频"}
         </button>
       ) : null}
-      {canPublishVideo(current.status) ? (
-        <div className="space-y-2">
-          <p className="text-neutral-700">视频已完成，可以导出或继续发布。</p>
-          <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={publishHref(projectId, current.id)}>
-            下一步：发布
-          </Link>
-        </div>
+      {canPublishVideo(current.status) && reviewAccepted ? (
+        <p className="text-neutral-600">下载后可手动发布到抖音。当前使用手动发布模式。</p>
       ) : null}
       {scriptId ? (
-        <div className="space-y-2">
-          <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void generate()}>
-            重新生成视频
-          </button>
-          <p className="text-xs text-neutral-500">重新创建一版视频，可能重新生成画面和配音。</p>
-        </div>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-neutral-600">更多操作</summary>
+          <div className="mt-2 space-y-2">
+            <button className="w-full rounded-md border px-4 py-2 disabled:opacity-50" type="button" disabled={pending} onClick={() => void generate()} title="重新生成这一版视频">
+              重新生成视频
+            </button>
+            <p className="text-xs text-neutral-500">重新制作这一版视频，可能重新生成画面和配音。</p>
+            {canExportVideo(current.status) && !reviewAccepted ? (
+              <p className="text-xs text-neutral-500">确认成片后即可下载。</p>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </aside>
   ) : null;
@@ -255,9 +289,38 @@ function ContentVideosPageInner() {
   return (
     <div>
       <PageHeader
-        title="视频"
-        description="从已确认脚本生成完整视频，查看制作进度，完成后预览和导出。"
-        breadcrumb={`项目 / ${project.name} / 视频`}
+        title="视频制作"
+        description="生成、预览、确认成片，然后下载并手动发布。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "视频" },
+        ]}
+      />
+      <VideoProductionContextHeaderV4
+        title={currentView?.title || selectedScript?.title || project.name}
+        stageLabel={
+          current?.status === "COMPLETED" && !reviewAccepted
+            ? "成片审核"
+            : current?.status === "COMPLETED" && reviewAccepted
+              ? "导出"
+              : "视频制作"
+        }
+        scriptStatus={selectedScript ? scriptStatusLabel(selectedScript.status) : undefined}
+        videoStatus={current ? videoStatusLabel(current.status) : "等待开始"}
+        nextAction={
+          !current
+            ? "开始制作视频"
+            : current.status === "FAILED"
+              ? "重试生成"
+              : current.status === "COMPLETED" && !reviewAccepted
+                ? "确认成片"
+                : current.status === "COMPLETED" && reviewAccepted && !downloadStarted
+                  ? "下载竖版视频"
+                  : current.status === "COMPLETED" && downloadStarted
+                    ? "手动发布并登记作品"
+                    : "等待成片完成"
+        }
       />
 
       {loading ? (
@@ -267,9 +330,7 @@ function ContentVideosPageInner() {
       ) : null}
 
       {!loading && loadError ? (
-        <p className="text-sm text-red-600" role="alert">
-          {loadError}
-        </p>
+        <ProductErrorState title="没能加载视频" humanMessage={loadError} recoveryAction="刷新后重试" />
       ) : null}
 
       {!loading && !loadError && videoError ? (
@@ -282,7 +343,7 @@ function ContentVideosPageInner() {
         <WorkspacePageShell>
           <EmptyState
             title="还没有可生成视频的脚本"
-            description="先确认一份脚本，再进入视频制作。"
+            description="确认脚本后即可制作视频。不会放演示成片。"
             primaryAction={{ label: "去脚本", href: scriptsHref(projectId) }}
           />
         </WorkspacePageShell>
@@ -298,10 +359,32 @@ function ContentVideosPageInner() {
 
           <WorkspacePageShell sidebar={actions}>
             <div className="space-y-6">
-              <VideoSourceForm
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="制作状态">
+              {(
+                [
+                  ["all", "全部"],
+                  ["pending", "待制作"],
+                  ["running", "制作中"],
+                  ["done", "已完成"],
+                  ["failed", "失败"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`rounded-md border px-3 py-1.5 text-xs ${prodTab === id ? "border-neutral-900 bg-neutral-900 text-white" : ""}`}
+                  onClick={() => setProdTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {current ? <ProductionStatusBadge status={current.status} /> : null}
+            <VideoSourceForm
                 scriptId={scriptId}
                 scripts={usableScripts}
                 pending={pending}
+                collapsed={Boolean(scriptId)}
                 onChange={(next) => {
                   setScriptId(next);
                   setSelectedVideoId("");
@@ -310,6 +393,18 @@ function ContentVideosPageInner() {
                   setExportMessage(null);
                 }}
               />
+
+              {taskState ? (
+                <AITaskState
+                  state={taskState}
+                  stages={
+                    currentView?.stages
+                      .filter((item) => item.state === "current" || item.state === "failed")
+                      .map((item) => item.label) ?? []
+                  }
+                />
+              ) : null}
+              {leaveCopy ? <p className="text-sm text-neutral-600">你可以离开此页面，任务会继续运行。回来后打开「视频」即可继续查看。</p> : null}
 
               {creating ? (
                 <p className="text-sm text-neutral-700" aria-live="polite">
@@ -335,24 +430,54 @@ function ContentVideosPageInner() {
                   disabled={pending}
                   onClick={() => void generate()}
                 >
-                  生成视频
+                  开始制作视频
                 </button>
               ) : null}
 
-              {scriptId && !current && !pending ? <p className="text-sm text-neutral-600">还没有这个脚本的视频，点击生成视频开始。</p> : null}
+              {scriptId && !current && !pending ? <p className="text-sm text-neutral-600">还没有这个脚本的成片，点击开始制作。</p> : null}
 
               {current && !currentView ? <p className="text-sm text-neutral-600">该视频状态无法读取</p> : null}
 
               {current && currentView ? (
-                <VideoDetail
-                  view={currentView}
-                  previewUrl={preview?.id === current.id ? preview.url : null}
-                  previewUnavailable={previewFailedId === current.id}
-                />
+                <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)] lg:items-start lg:gap-4">
+                  <VideoDetail
+                    view={currentView}
+                    previewUrl={preview?.id === current.id ? preview.url : null}
+                    previewUnavailable={previewFailedId === current.id}
+                    videoId={current.id}
+                    accessToken={accessToken}
+                  />
+                  <div className="space-y-4">
+                    {current.status === "COMPLETED" ? (
+                      <>
+                        <VideoVariantPanelV4 portrait={portrait} selected={variant} onSelect={setVariant} />
+                        {reviewAccepted ? (
+                          <p className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm">已确认最终成片</p>
+                        ) : (
+                          <>
+                            <FinalReviewChecklistV4 />
+                            <HumanReviewBar
+                              context="这条成片"
+                              confirmLabel="确认通过"
+                              onConfirm={() => setReviewAccepted(true)}
+                              onRequestChanges={() => undefined}
+                              onDefer={() => undefined}
+                            />
+                            <p className="text-xs text-neutral-500">需要修改将留在视频制作页。当前没有局部剪辑，可重新生成新版本。</p>
+                          </>
+                        )}
+                      </>
+                    ) : null}
+                    {downloadStarted && current.id ? <ManualPublishGuideV4 publishHref={publishHref(projectId, current.id)} /> : null}
+                  </div>
+                </div>
               ) : null}
             </div>
           </WorkspacePageShell>
 
+          <details>
+            <summary className="cursor-pointer text-sm text-neutral-600">历史版本（不会删除旧版本）</summary>
+            <div className="mt-3">
           <VideoHistory
             items={videoHistoryViews(scriptVideos)}
             onView={(index) => {
@@ -365,6 +490,8 @@ function ContentVideosPageInner() {
               }
             }}
           />
+            </div>
+          </details>
         </div>
       ) : null}
     </div>

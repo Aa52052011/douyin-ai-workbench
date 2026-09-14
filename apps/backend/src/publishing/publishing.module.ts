@@ -9,6 +9,7 @@ import { EncryptedDbSecretStore } from './secrets/encrypted-db.secret-store.js';
 import { SECRET_STORE } from './secrets/secret.types.js';
 import { MockPublishingProvider } from './providers/mock-publishing.provider.js';
 import { PublishingProviderRegistry } from './providers/publishing-provider.registry.js';
+import { DouyinPublishingProviderRuntime } from './douyin/douyin-publishing.provider.js';
 import { PUBLISHING_PROVIDER_REGISTRY } from './providers/publishing.token.js';
 import { PublicationsController } from './publications.controller.js';
 import { PublicationsService } from './publications.service.js';
@@ -52,6 +53,7 @@ import { PlatformAccountsController } from './platform-accounts.controller.js';
       useFactory: createOAuthStateStore,
     },
     DouyinOAuthService,
+    DouyinPublishingProviderRuntime,
     PublicationsService,
     PublishExecutionService,
   ],
@@ -62,6 +64,7 @@ import { PlatformAccountsController } from './platform-accounts.controller.js';
     PublishingProviderRegistry,
     PUBLISHING_PROVIDER_REGISTRY,
     DouyinOAuthService,
+    DouyinPublishingProviderRuntime,
     PublicationsService,
     PublishExecutionService,
   ],

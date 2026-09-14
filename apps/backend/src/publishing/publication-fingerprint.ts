@@ -1,5 +1,5 @@
 export type PublicationFingerprintInput = {
-  videoId: string;
+  videoId: string | null;
   platformAccountId: string | null;
   platform: string;
   mode: string;

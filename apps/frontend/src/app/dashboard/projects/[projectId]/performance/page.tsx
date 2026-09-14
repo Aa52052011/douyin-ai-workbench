@@ -1,12 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { ContextualGuidanceV1 } from "../../../../../components/contextual-guidance-v1";
 import { EmptyState } from "../../../../../components/empty-state";
+import { FeedbackHandoffUXV5 } from "../../../../../components/feedback-handoff-ux-v5";
+import { LearningSummaryCard } from "../../../../../components/learning-summary-card";
+import { MetricsHistoryV5 } from "../../../../../components/metrics-history-v5";
 import { PageHeader } from "../../../../../components/page-header";
-import { PerformanceHistory } from "../../../../../components/performance-history";
 import { PerformanceMetricForm } from "../../../../../components/performance-metric-form";
+import { RecommendationReviewV5, type RecommendationReviewItem } from "../../../../../components/recommendation-review-v5";
+import { TrendCardsV5 } from "../../../../../components/trend-cards-v5";
 import { PerformancePublicationSelector } from "../../../../../components/performance-publication-selector";
 import { PerformanceTabs } from "../../../../../components/performance-tabs";
 import { useAuth } from "../../../../../lib/auth-context";
@@ -22,7 +26,6 @@ import {
   emptyMetricForm,
   formatObservedAt,
   humanizeMetricsError,
-  nextPlanHref,
   publishHref,
   resolvePerformanceQuery,
   sortSnapshotsNewestFirst,
@@ -45,6 +48,7 @@ import {
   parseSummary,
   performanceSignals,
   summaryCards,
+  humanizePerformanceInsight,
 } from "../../../../../lib/performance.view";
 import { listPublications } from "../../../../../lib/publication.api";
 import type { PublicationRecord } from "../../../../../lib/publication.types";
@@ -52,6 +56,19 @@ import { parsePublicationRecord } from "../../../../../lib/publication.view";
 import { useProjectWorkspace } from "../../../../../lib/project-workspace-context";
 import { listVideos } from "../../../../../lib/video.api";
 import type { VideoRecord } from "../../../../../lib/video.types";
+import { getLearningSummary, type LearningPublicView } from "../../../../../lib/research.api";
+import {
+  CONFIDENCE_TOOLTIP,
+  analysisErrorCopy,
+  confidenceCopy,
+  evidenceFromCounts,
+  findingTypeCopy,
+  insufficientReviewCopy,
+  likeRateEvidence,
+  mayShowRetentionClaim,
+  nowLocalDatetimeValue,
+  staleAnalysisCopy,
+} from "../../../../../lib/ux/publication-monitoring-v5";
 
 function PerformancePageInner() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -66,7 +83,8 @@ function PerformancePageInner() {
   const [snapshots, setSnapshots] = useState<MetricSnapshotRecord[]>([]);
   const [summary, setSummary] = useState<PerformanceSummaryRecord | null>(null);
   const [insights, setInsights] = useState<PerformanceInsightResult | null>(null);
-  const [form, setForm] = useState<MetricFormState>(emptyMetricForm());
+  const [form, setForm] = useState<MetricFormState>(emptyMetricForm(nowLocalDatetimeValue()));
+  const [reviewDecisions, setReviewDecisions] = useState<Record<string, "approve" | "reject" | "defer">>({});
   const [tab, setTab] = useState<"metrics" | "advice">("metrics");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,12 +96,28 @@ function PerformancePageInner() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [learning, setLearning] = useState<LearningPublicView | null>(null);
 
   useEffect(() => {
     if (!accessToken || !projectId) {
       return;
     }
     let cancelled = false;
+    void getLearningSummary(accessToken, projectId).then((data) => {
+      if (!cancelled) {
+        setLearning(data);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setLearning({
+          statusLabel: "数据不足，系统正在积累",
+          summary: [],
+          nextBatchAdjustments: [],
+          dataSufficiency: "INSUFFICIENT_DATA",
+          lastUpdatedAt: new Date().toISOString(),
+        });
+      }
+    });
     void Promise.allSettled([listPublications(accessToken, projectId), listVideos(accessToken, projectId)]).then(
       ([publicationResult, videoResult]) => {
         if (cancelled) {
@@ -175,20 +209,47 @@ function PerformancePageInner() {
   const sourceVideo = videos.find((item) => item.id === current?.videoId) ?? null;
   const history = metricHistoryRows(snapshots, current?.publishedAt);
   const latest = sortSnapshotsNewestFirst(snapshots)[0] ?? null;
+  const previous = sortSnapshotsNewestFirst(snapshots)[1] ?? null;
   const hasCurrentMetrics = snapshots.length > 0;
   const hasProjectMetrics = Object.values(hasDataById).some(Boolean) || hasCurrentMetrics;
+  const hasRetention = mayShowRetentionClaim(latest?.completionRate) || mayShowRetentionClaim(latest?.averageWatchTimeSeconds);
   const cards = latestMetricCards(latest, summary);
   const analysisCards = summaryCards(summary);
-  const signals = performanceSignals(insights);
-  const observedSignals = insightViews(insights);
+  const signals = performanceSignals(insights, hasRetention);
+  const observedSignals = insightViews(insights, hasRetention);
+  const recItems: RecommendationReviewItem[] = hasCurrentMetrics
+    ? (insights?.insights ?? [])
+        .map((item, index) => {
+          const title = humanizePerformanceInsight(item.code);
+          if (!title) return null;
+          if (!hasRetention && (item.code === "STRONG_COMPLETION_RATE" || item.code === "WEAK_COMPLETION_RATE")) return null;
+          const rec: RecommendationReviewItem = {
+            id: item.code ?? `rec-${index}`,
+            title,
+            reason: "基于目前数据，这条内容还有以下可优化空间",
+            evidence:
+              evidenceFromCounts("播放量", previous?.views, latest?.views) ||
+              likeRateEvidence(latest?.views, latest?.likes) ||
+              "依据来自你录入的历史数据记录",
+            confidence: item.confidence,
+            type: item.code?.includes("LOW") ? "WEAKNESS" : item.code?.includes("HIGH") ? "STRENGTH" : "OBSERVATION",
+            group: item.category,
+          };
+          return rec;
+        })
+        .filter((item): item is RecommendationReviewItem => item !== null)
+    : [];
+  const approvedCount = Object.values(reviewDecisions).filter((value) => value === "approve").length;
+  const analysisErr = analysisErrorCopy();
 
   function changePublication(nextId: string) {
     setPublicationId(nextId);
     setSnapshots([]);
     setSummary(null);
     setInsights(null);
-    setForm(emptyMetricForm());
+    setForm(emptyMetricForm(nowLocalDatetimeValue()));
     setComposing(false);
+    setReviewDecisions({});
     setActionError(null);
     setMetricsError(null);
     setAnalysisError(null);
@@ -219,7 +280,7 @@ function PerformancePageInner() {
         }
         setSummary(summaryResult.status === "fulfilled" ? parseSummary(summaryResult.value) : null);
         setInsights(insightResult.status === "fulfilled" ? parseInsights(insightResult.value) : null);
-        setForm(emptyMetricForm());
+        setForm(emptyMetricForm(nowLocalDatetimeValue()));
         setComposing(false);
         setPending(false);
       })
@@ -244,7 +305,16 @@ function PerformancePageInner() {
   if (eligible.length === 0) {
     return (
       <div>
-        <PageHeader title="表现与建议" description="记录已发布作品的数据表现，查看当前样本中的表现信号，并把反馈用于下一期内容计划。" breadcrumb={project.name} />
+        <PageHeader
+          title="AI复盘"
+          description="发布与数据：查看真实发布表现和系统学习建议。当前仅手动发布。"
+          breadcrumb={[
+            { label: "项目", href: "/dashboard/projects" },
+            { label: project.name, href: `/dashboard/projects/${projectId}` },
+            { label: "发布与数据", href: `/dashboard/projects/${projectId}/publish` },
+            { label: "AI复盘" },
+          ]}
+        />
         <EmptyState
           title={noPublishedEmptyTitle()}
           description="先记录一条已发布作品，再开始查看表现数据。"
@@ -257,17 +327,28 @@ function PerformancePageInner() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="表现与建议"
-        description="记录已发布作品的数据表现，查看当前样本中的表现信号，并把反馈用于下一期内容计划。"
-        breadcrumb={project.name}
+        title="AI复盘"
+        description="发布与数据：查看真实发布表现和系统学习建议。当前仅手动发布。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "发布与数据", href: `/dashboard/projects/${projectId}/publish` },
+          { label: "AI复盘" },
+        ]}
         actions={
-          hasProjectMetrics ? (
-            <Link className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={nextPlanHref(projectId)}>
-              创建下一期内容计划
-            </Link>
-          ) : null
+          hasCurrentMetrics ? (
+            <button className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" type="button" onClick={() => setTab("advice")}>
+              {recItems.length ? "查看复盘" : "开始AI复盘"}
+            </button>
+          ) : (
+            <button className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" type="button" onClick={() => setComposing(true)}>
+              录入数据
+            </button>
+          )
         }
       />
+      <ContextualGuidanceV1 id="analysis" />
+      {learning ? <LearningSummaryCard learning={learning} /> : null}
       {queryWarning ? (
         <p className="text-sm text-red-600" role="alert">
           {queryWarning}
@@ -313,8 +394,8 @@ function PerformancePageInner() {
             {!hasCurrentMetrics && !composing ? (
               <EmptyState
                 title={noMetricsEmptyTitle()}
-                description="录入发布后的播放、互动等数据，系统才能开始判断哪些内容方向值得继续。"
-                primaryAction={{ label: "录入表现数据", onClick: () => setComposing(true) }}
+                description="目前还不能分析。下一步：录入你在抖音看到的数据。"
+                primaryAction={{ label: "录入数据", onClick: () => setComposing(true) }}
               />
             ) : null}
 
@@ -353,30 +434,34 @@ function PerformancePageInner() {
               </section>
             ) : hasCurrentMetrics ? (
               <button className="rounded-md border px-4 py-2 text-sm" type="button" onClick={() => setComposing(true)}>
-                录入表现数据
+                继续录入
               </button>
             ) : null}
 
+            <TrendCardsV5
+              previous={previous ? { views: previous.views, likes: previous.likes, comments: previous.comments, shares: previous.shares } : null}
+              latest={latest ? { views: latest.views, likes: latest.likes, comments: latest.comments, shares: latest.shares } : null}
+            />
+
             {history.length > 0 ? (
-              <section className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
-                <h2 className="text-base font-medium">历史观测记录</h2>
-                <p className="text-sm text-neutral-600">每次保存都会新增一条记录，不会覆盖之前的数据。</p>
-                <PerformanceHistory
-                  rows={history}
-                  expandedIndex={expandedIndex}
-                  onToggle={(index) => setExpandedIndex((currentIndex) => (currentIndex === index ? null : index))}
-                />
-              </section>
+              <MetricsHistoryV5
+                rows={history}
+                expandedIndex={expandedIndex}
+                onToggle={(index) => setExpandedIndex((currentIndex) => (currentIndex === index ? null : index))}
+              />
             ) : null}
 
             {hasCurrentMetrics ? (
-              <section className="space-y-3">
-                <h2 className="text-base font-medium">表现分析</h2>
+              <section className="space-y-3" data-acf-performance-analysis-page-v5>
+                <h2 className="text-base font-medium">AI复盘</h2>
+                <p className="text-sm">基于目前数据，这条内容还有以下可优化空间。</p>
+                <p className="acf-caption">当前是基于已录入指标的观察，不是完整分析代理的全部能力，也不会自动改下一轮内容。</p>
                 {analysisError ? (
                   <p className="text-sm text-neutral-600" role="status">
-                    {analysisError}
+                    {analysisErr.title}。{analysisErr.body}
                   </p>
                 ) : null}
+                {insights?.dataSufficiency === "STALE_BY_NEWER_METRICS" ? <p className="text-sm">{staleAnalysisCopy()}</p> : null}
                 {analysisCards.length > 0 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {analysisCards.map((card) => (
@@ -390,10 +475,20 @@ function PerformancePageInner() {
                 {observedSignals.length > 0 ? (
                   <ul className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
                     {observedSignals.map((item) => (
-                      <li key={item.text}>{item.text}</li>
+                      <li key={item.text}>
+                        {findingTypeCopy("OBSERVATION")}：{item.text}
+                        {confidenceCopy(insights?.insights?.find((row) => item.text.includes(humanizePerformanceInsight(row.code)))?.confidence) ? (
+                          <span title={CONFIDENCE_TOOLTIP}>
+                            {" "}
+                            （{confidenceCopy(insights?.insights?.find((row) => item.text.includes(humanizePerformanceInsight(row.code)))?.confidence)}）
+                          </span>
+                        ) : null}
+                      </li>
                     ))}
                   </ul>
-                ) : null}
+                ) : (
+                  <p className="text-sm">{insufficientReviewCopy()}</p>
+                )}
               </section>
             ) : null}
           </div>
@@ -403,22 +498,24 @@ function PerformancePageInner() {
           <h2 className="text-base font-medium">优化建议</h2>
           <p className="text-sm text-neutral-600">{feedbackLoopCopy()}</p>
           <p className="text-sm text-neutral-600">{optimizationScopeNote()}</p>
-          {signals.length > 0 ? (
-            <div>
-              <p className="mb-2 text-sm font-medium">已有可观察信号</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm">
-                {signals.map((item) => (
-                  <li key={item.text}>{item.text.replace(/^当前数据中观察到/, "").replace(/。$/, "")}</li>
-                ))}
-              </ul>
-            </div>
+          {!hasCurrentMetrics ? (
+            <p className="text-sm">{insufficientReviewCopy()}</p>
+          ) : recItems.length > 0 ? (
+            <RecommendationReviewV5
+              items={recItems}
+              decisions={reviewDecisions}
+              singlePost={eligible.length < 2}
+              onDecide={(id, action) => setReviewDecisions((currentMap) => ({ ...currentMap, [id]: action }))}
+            />
           ) : (
             <p className="text-sm">{insufficientDataCopy()}</p>
           )}
+          <FeedbackHandoffUXV5 approvedCount={approvedCount} totalCount={recItems.length} />
           {eligible.length < 2 || !hasProjectMetrics ? <p className="text-sm text-neutral-600">{limitedSampleCopy()}</p> : null}
           {dataSufficiencyLabel(insights?.dataSufficiency) ? (
             <p className="text-sm text-neutral-500">当前作品数据完整度：{dataSufficiencyLabel(insights?.dataSufficiency)}</p>
           ) : null}
+          {signals.length === 0 && hasCurrentMetrics ? null : null}
         </section>
       )}
     </div>

@@ -8,6 +8,12 @@ import { PageHeader } from "../../../../../components/page-header";
 import { PositioningForm } from "../../../../../components/positioning-form";
 import { PositioningHistory } from "../../../../../components/positioning-history";
 import { PositioningSummary } from "../../../../../components/positioning-summary";
+import { ProductionContextHeaderV3, WorkflowFooterV3 } from "../../../../../components/production-context-header";
+import { AITaskState } from "../../../../../components/ui/ai-task-state";
+import { ProductErrorState } from "../../../../../components/ui/error-state";
+import { HumanReviewBar } from "../../../../../components/ui/human-review-bar";
+import { useToast } from "../../../../../components/ui/toast";
+import { Button } from "../../../../../components/ui/button";
 import { useAuth } from "../../../../../lib/auth-context";
 import { getCurrentProductBrief } from "../../../../../lib/product-brief.api";
 import type { ProductBriefPayload } from "../../../../../lib/product-brief.types";
@@ -18,9 +24,9 @@ import {
   humanizePositioningError,
   inputFromForm,
   latestFailedPositioning,
-  marketResearchHref,
   onlyContractInput,
   productInformationHref,
+  contentPlansHref,
   suggestedPositioningForm,
   validatePositioningForm,
   type PositioningFieldErrors,
@@ -43,6 +49,9 @@ export default function AccountPositioningPage() {
   const [fieldErrors, setFieldErrors] = useState<PositioningFieldErrors>({});
   const [pending, setPending] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!accessToken || !projectId) {
@@ -92,6 +101,8 @@ export default function AccountPositioningPage() {
     setFieldErrors({});
     setGenerateError(null);
     setEditing(true);
+    setDirty(false);
+    setConfirmed(false);
   }
 
   async function generate() {
@@ -112,8 +123,12 @@ export default function AccountPositioningPage() {
       const latest = await listPositioningRuns(accessToken, projectId);
       setRuns(latest);
       setEditing(false);
+      setDirty(false);
+      setConfirmed(false);
       if (finished.status === "FAILED") {
         setGenerateError("账号定位生成失败，请稍后重试。");
+      } else {
+        toast("账号定位已生成");
       }
     } catch (err) {
       setGenerateError(humanizePositioningError(err));
@@ -122,16 +137,25 @@ export default function AccountPositioningPage() {
     }
   }
 
+  const reuseHint = Boolean(brief?.targetAudience || project.industry || project.platform);
+
   return (
     <div>
       <PageHeader
         title="账号定位"
-        description="明确你的账号要面向谁、以什么身份表达、长期围绕哪些内容方向创作。"
-        breadcrumb={`项目 / ${project.name} / 账号定位`}
+        description="用几句话告诉系统：你是谁、做什么、给谁看。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "账号定位" },
+        ]}
       />
+      <ProductionContextHeaderV3 projectName={project.name} stageId="positioning" completed={current ? ["positioning"] : []} />
 
       {loading ? <p className="text-sm text-neutral-600">正在加载账号定位…</p> : null}
-      {!loading && loadError ? <p className="text-sm text-red-600">{loadError}</p> : null}
+      {!loading && loadError ? (
+        <ProductErrorState title="没能加载账号定位" humanMessage={loadError} recoveryAction="刷新后重试" />
+      ) : null}
 
       {!loading && !loadError && !brief && (
         <p className="mb-4 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
@@ -144,26 +168,24 @@ export default function AccountPositioningPage() {
       )}
 
       {!loading && !loadError && generateError ? (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {generateError}
-        </p>
+        <div className="mb-4">
+          <ProductErrorState title="账号定位没有生成" humanMessage={generateError} recoveryAction="稍后重试" />
+        </div>
       ) : null}
       {!loading && !loadError && !generateError && failed && !current ? (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          账号定位生成失败，请稍后重试。
-        </p>
+        <ProductErrorState title="账号定位没有生成" humanMessage="请稍后重试。" recoveryAction="重新生成" />
       ) : null}
 
       {!loading && !loadError && pending ? (
-        <p className="mb-4 text-sm text-neutral-700" aria-live="polite">
-          AI 正在生成账号定位…
-        </p>
+        <div className="mb-4">
+          <AITaskState state="RUNNING" stages={["正在整理账号资料", "正在生成定位"]} />
+        </div>
       ) : null}
 
       {!loading && !loadError && !current && !editing ? (
         <EmptyState
           title="还没有账号定位"
-          description="先确定账号的人设、目标受众和内容方向，后续推广策略和内容计划都会以此为基础。"
+          description="先确定账号的人设、目标受众和内容方向，后续内容计划都会以此为基础。"
           primaryAction={{ label: "生成账号定位", onClick: () => openForm() }}
         />
       ) : null}
@@ -173,30 +195,55 @@ export default function AccountPositioningPage() {
           form={form}
           errors={fieldErrors}
           pending={pending}
-          onChange={setForm}
+          reuseHint={reuseHint}
+          onChange={(next) => {
+            setForm(next);
+            setDirty(true);
+          }}
           onSubmit={() => void generate()}
           onCancel={() => {
+            if (dirty && !window.confirm("有未保存的修改，确定离开吗？已保存的定位不会被清空。")) {
+              return;
+            }
             setEditing(false);
             setFieldErrors({});
+            setDirty(false);
           }}
         />
       ) : null}
 
       {!loading && !loadError && current && !editing ? (
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-2">
-            <Link className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={marketResearchHref(projectId)}>
-              下一步：导入市场数据
-            </Link>
-            <button className="rounded-md border px-4 py-2 text-sm" type="button" disabled={pending} onClick={() => openForm(current)}>
-              重新生成定位
-            </button>
-          </div>
-          <p className="text-xs text-neutral-500">最新结果</p>
-          <PositioningSummary output={current.output} />
+          {confirmed ? (
+            <div className="rounded-md border border-neutral-200 bg-white px-4 py-3">
+              <p className="text-sm font-medium">账号定位已完成</p>
+              <p className="mt-1 text-sm text-neutral-600">下一步：生成内容计划</p>
+              <Link className="mt-3 inline-flex rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={contentPlansHref(projectId)}>
+                生成内容计划
+              </Link>
+            </div>
+          ) : (
+            <HumanReviewBar
+              context="这条账号定位"
+              confirmLabel="确认定位并继续"
+              onConfirm={() => setConfirmed(true)}
+              onRequestChanges={() => openForm(current)}
+              onDefer={() => undefined}
+            />
+          )}
+          <PositioningSummary output={current.output} platform={current.input?.platform || project.platform || undefined} onEdit={() => openForm(current)} />
+          <details className="text-sm text-neutral-600">
+            <summary className="cursor-pointer">更多操作</summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button variant="secondary" type="button" disabled={pending} onClick={() => openForm(current)}>
+                重新生成定位
+              </Button>
+            </div>
+          </details>
           <PositioningHistory items={history} />
         </div>
       ) : null}
+      <WorkflowFooterV3 projectId={projectId} stageId="positioning" />
     </div>
   );
 }

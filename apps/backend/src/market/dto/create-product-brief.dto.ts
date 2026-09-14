@@ -51,6 +51,11 @@ export class CreateProductBriefDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(32)
+  goalCode?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(PRODUCT_BRIEF_LIMITS.conversionGoal)
   conversionGoal?: string;
 

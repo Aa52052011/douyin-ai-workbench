@@ -2,6 +2,8 @@ export type ProductBriefPayload = {
   productName: string;
   industry: string;
   businessGoal: string;
+  /** Optional normalized goal code (Step 13.2). Missing on legacy briefs — normalize on read. */
+  goalCode?: string;
   category?: string;
   brand?: string;
   description?: string;

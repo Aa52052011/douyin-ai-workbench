@@ -21,6 +21,8 @@ import { parseMarketIntelligenceInput } from './definitions/market-intelligence.
 import { parseCampaignStrategyInput } from './definitions/campaign-strategy.agent.js';
 import { parseProductIntakeInput } from './definitions/product-intake.agent.js';
 import { parseMarketIntakeInput } from './definitions/market-intake.agent.js';
+import { parseReferenceAnalysisInput } from './definitions/reference-analysis.agent.js';
+import { loadLatestEligiblePreviousBatch } from './learning/previous-batch-loader.js';
 import {
   ACCOUNT_POSITIONING_AGENT_ID,
   CAMPAIGN_STRATEGY_AGENT_ID,
@@ -29,9 +31,11 @@ import {
   MARKET_INTELLIGENCE_AGENT_ID,
   PRODUCT_INTAKE_AGENT_ID,
   MARKET_INTAKE_AGENT_ID,
+  REFERENCE_ANALYSIS_AGENT_ID,
   SCRIPT_GENERATION_AGENT_ID,
 } from './agent.types.js';
 import { PerformanceFeedbackService } from '../metrics/performance-feedback.service.js';
+import { compactLearningContext, buildLearningSignalsFromPerformanceFeedback } from '../research/learning-signals.js';
 
 @Injectable()
 export class AgentsService {
@@ -164,6 +168,9 @@ export class AgentsService {
     if (agentId === MARKET_INTAKE_AGENT_ID) {
       return parseMarketIntakeInput(input);
     }
+    if (agentId === REFERENCE_ANALYSIS_AGENT_ID) {
+      return parseReferenceAnalysisInput(input);
+    }
     return input;
   }
 
@@ -184,10 +191,31 @@ export class AgentsService {
     }
     const performanceFeedback = await this.performanceFeedback.buildForProject(scope);
     const campaignStrategy = await this.loadCampaignStrategy(record.strategyId, scope);
+    const signals = buildLearningSignalsFromPerformanceFeedback(performanceFeedback);
+    const latest = await this.prisma.strategyAdjustmentRecommendation.findFirst({
+      where: { tenantId: scope.tenantId, projectId: scope.projectId, status: 'ACTIVE' },
+      orderBy: { version: 'desc' },
+    });
+    const recentPlan = await loadLatestEligiblePreviousBatch(this.prisma, scope);
+    const learningContext = {
+      ...compactLearningContext(signals),
+      latestRecommendations: publicRecommendationRows(latest?.payload),
+      ...(recentPlan
+        ? {
+            previousBatchSummary: {
+              planId: recentPlan.planId,
+              title: recentPlan.title,
+              sampleSize: performanceFeedback.sampleSize,
+              publicationsConsidered: performanceFeedback.publicationsConsidered,
+            },
+          }
+        : {}),
+    };
     return parseContentPlanningInput({
       ...record,
       positioning,
       performanceFeedback,
+      learningContext,
       ...(campaignStrategy ? { campaignStrategy } : {}),
     });
   }
@@ -253,5 +281,36 @@ export class AgentsService {
       status: row.status,
       payload: row.payload,
     };
+  }
+}
+
+function publicRecommendationRows(payload: unknown): Array<{ actionLabel: string; rationale: string }> {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+  const recs = (payload as { recommendations?: Array<{ action?: string; rationale?: string }> }).recommendations;
+  if (!Array.isArray(recs)) {
+    return [];
+  }
+  return recs.map((item) => ({
+    actionLabel: planningActionLabel(String(item.action ?? 'KEEP')),
+    rationale: item.rationale ?? '',
+  }));
+}
+
+function planningActionLabel(action: string): string {
+  switch (action) {
+    case 'INCREASE':
+      return '下一批适当增加类似内容';
+    case 'DECREASE':
+      return '下一批谨慎减少类似内容';
+    case 'AVOID':
+      return '下一批减少该类内容';
+    case 'TEST_MORE':
+      return '下一批小范围再试';
+    case 'REFRESH_STRATEGY':
+      return '建议重新审视策略（不会自动改已确认版本）';
+    default:
+      return '保持当前方向';
   }
 }

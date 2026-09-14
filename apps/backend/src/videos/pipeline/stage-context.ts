@@ -27,6 +27,9 @@ export function asPipelineOutput(value: unknown): JobPipelineOutput {
       estimatedCost: 0,
     },
     timeline: current?.timeline,
+    materialResolution: current?.materialResolution,
+    editingTimeline: current?.editingTimeline,
+    qualityGate: current?.qualityGate,
     final: current?.final,
   };
 }
@@ -55,6 +58,12 @@ export function mockFailStage(requirements?: string): PipelineStageName | 'all' 
   }
   if (requirements === '__mock_fail_finalize__') {
     return 'finalize';
+  }
+  if (requirements === '__mock_fail_quality_gate__') {
+    return 'quality_check';
+  }
+  if (requirements === '__mock_fail_repair__') {
+    return 'repair';
   }
   return undefined;
 }

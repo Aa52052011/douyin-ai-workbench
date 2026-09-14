@@ -101,6 +101,7 @@ describe.skipIf(!enabled)('Redis + BullMQ + Worker (integration)', () => {
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET = 'test-jwt-secret';
     process.env.MEDIA_STORAGE_ROOT = path.join(os.tmpdir(), `acf-redis-${process.pid}`);
+    process.env.ACF_JOB_QUEUE_NAME = `acf-jobs-e2e-${randomUUID()}`;
     delete process.env.AI_ENGINE_URL;
     delete process.env.MODEL_API_KEY;
     const databaseUrl = await startTestDatabase();

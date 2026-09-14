@@ -97,6 +97,40 @@ export function fingerprintFromSnapshot(
   });
 }
 
+export function fingerprintFromStoredObservedAt(
+  publicationId: string,
+  existing: ManualMetricsStored,
+): string {
+  return manualMetricsFingerprint({
+    publicationId,
+    views: comparableMetricNumber(existing.views),
+    likes: comparableMetricNumber(existing.likes),
+    comments: comparableMetricNumber(existing.comments),
+    shares: comparableMetricNumber(existing.shares),
+    favorites: comparableMetricNumber(existing.favorites),
+    averageWatchTimeSeconds: comparableMetricNumber(existing.averageWatchTimeSeconds),
+    completionRate: comparableMetricNumber(existing.completionRate),
+    newFollowers: comparableMetricNumber(existing.newFollowers),
+    observedAtSemantic: existing.observedAt.toISOString(),
+  });
+}
+
+export function sameManualMetricsContent(
+  publicationId: string,
+  existing: ManualMetricsStored,
+  incoming: ManualMetricsValues,
+  observedAt: Date,
+): boolean {
+  return (
+    fingerprintFromStoredObservedAt(publicationId, existing) ===
+    manualMetricsFingerprint({
+      publicationId,
+      ...incoming,
+      observedAtSemantic: observedAt.toISOString(),
+    })
+  );
+}
+
 export function sameManualMetricsRequest(
   publicationId: string,
   existing: ManualMetricsStored,

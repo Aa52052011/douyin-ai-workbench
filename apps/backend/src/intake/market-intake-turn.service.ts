@@ -4,7 +4,7 @@ import { AgentsService } from '../agents/agent.service.js';
 import { MARKET_INTAKE_AGENT_ID, MARKET_INTAKE_AGENT_VERSION } from '../agents/agent.types.js';
 import {
   parseMarketIntakeInput,
-  sanitizeMarketIntakeDraftPatch,
+  sanitizeMarketIntakeUserDraft,
 } from '../agents/definitions/market-intake.agent.js';
 import { applyDeterministicMarketReadiness, mergeMarketIntakeDraft } from '../agents/definitions/market-intake.patch.js';
 import type {
@@ -43,9 +43,12 @@ export class MarketIntakeTurnService {
 
     let currentDraft: MarketIntakeDraft;
     try {
-      currentDraft = sanitizeMarketIntakeDraftPatch(stripNonAiDraftFields(dto.draft ?? {}));
+      currentDraft = sanitizeMarketIntakeUserDraft(stripNonAiDraftFields(dto.draft ?? {}));
     } catch {
-      throw new AppError(ErrorCode.VALIDATION_ERROR, 'Invalid market intake draft');
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        '市场信息草稿格式不正确，请检查关键词、竞品账号或参考链接后重试。',
+      );
     }
 
     const recentConversation = dto.messages

@@ -12,7 +12,7 @@ export type PlatformAccountPublicSummary = {
 
 export type PublicationPublic = {
   id: string;
-  videoId: string;
+  videoId: string | null;
   projectId: string;
   platform: string;
   mode: string;

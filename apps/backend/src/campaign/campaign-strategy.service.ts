@@ -10,6 +10,7 @@ import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { AccountMemoryService } from '../memory/account-memory.service.js';
 import { campaignStrategySemanticFingerprint } from './campaign-strategy-fingerprint.js';
 import { CampaignStrategyInputComposer } from './campaign-strategy-input.composer.js';
 import { toPublicCampaignStrategy, type CampaignStrategyPublic } from './campaign-strategy.mapper.js';
@@ -27,6 +28,7 @@ export class CampaignStrategyService {
     private readonly prisma: PrismaClient,
     private readonly composer: CampaignStrategyInputComposer,
     private readonly agents: AgentsService,
+    private readonly memory: AccountMemoryService,
   ) {}
 
   composeInput(
@@ -128,6 +130,7 @@ export class CampaignStrategyService {
           created.sourceAgentRunId === run.id
             ? run
             : await this.agents.getRun(auth, created.sourceAgentRunId!, meta.workspaceHint);
+        void this.memory.refreshMemorySafe(auth, project.id, 'STRATEGY_CONFIRMED', meta.workspaceHint);
         return { strategy: toPublicCampaignStrategy(created), run: persistedRun };
       } catch (error) {
         if (error instanceof AppError) {

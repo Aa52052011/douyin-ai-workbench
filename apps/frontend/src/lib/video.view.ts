@@ -273,6 +273,8 @@ export function videoView(video: VideoRecord): VideoView {
     completedAtLabel: formatVideoTime(video.job?.completedAt),
     failedStageLabel: display === "FAILED" ? humanizeFailedStage(failedStage) : "",
     failureMessage: display === "FAILED" ? failureMessage(video.job?.error, failedStage) || "视频生成失败" : "",
+    qualityLabel: "",
+    qualitySummary: [],
   };
 }
 
@@ -283,7 +285,7 @@ export function parsedVideoView(video: VideoRecord): VideoView | null {
 export function videoHistoryViews(items: VideoRecord[]): VideoHistoryItemView[] {
   return [...items]
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-    .map((item) => {
+    .map((item, index) => {
       const parsed = parseVideoRecord(item);
       return {
         title: item.scriptTitle || "视频",
@@ -291,6 +293,7 @@ export function videoHistoryViews(items: VideoRecord[]): VideoHistoryItemView[] 
         statusLabel: videoStatusLabel(parsed ? videoDisplayStatus(parsed) : item.status),
         durationLabel: typeof item.duration === "number" ? `${item.duration} 秒` : "",
         readable: Boolean(parsed),
+        versionLabel: index === 0 ? "当前版本" : index === 1 ? "上一个版本" : "历史版本",
       };
     });
 }

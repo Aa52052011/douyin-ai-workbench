@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ContentMixItemView, StrategyItemView, StrategyView } from "../lib/campaign-strategy.types";
+import { formatBusinessGoalDetail, formatBusinessGoalDisplay, normalizeBusinessGoal } from "../lib/business-goal";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -56,7 +57,16 @@ export function CampaignStrategySummary({ view, archived }: { view: StrategyView
       {view.objective ? (
         <Section title="推广目标">
           <p>{view.objective.primaryObjective}</p>
-          <p className="text-neutral-600">业务目标：{view.objective.businessGoal}</p>
+          {(() => {
+            const goal = normalizeBusinessGoal({ businessGoal: view.objective.businessGoal });
+            const detail = formatBusinessGoalDetail(goal);
+            return (
+              <>
+                <p className="text-neutral-600">{formatBusinessGoalDisplay(goal)}</p>
+                {detail ? <p className="text-neutral-600">{detail}</p> : null}
+              </>
+            );
+          })()}
           {view.objective.conversionGoal ? <p className="text-neutral-600">转化目标：{view.objective.conversionGoal}</p> : null}
         </Section>
       ) : null}

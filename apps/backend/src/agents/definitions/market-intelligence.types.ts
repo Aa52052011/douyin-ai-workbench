@@ -26,7 +26,13 @@ export const MARKET_INSIGHT_LIMITS = {
   payloadBytes: 16 * 1024,
 } as const;
 
-export const MARKET_INTELLIGENCE_INPUT_KEYS = ['productBrief', 'marketEvidence', 'userFocus'] as const;
+export const MARKET_INTELLIGENCE_INPUT_KEYS = [
+  'productBrief',
+  'marketEvidence',
+  'userFocus',
+  'normalizedMarketContext',
+] as const;
+
 
 export const MARKET_INTELLIGENCE_FORBIDDEN_KEYS = [
   ...FORBIDDEN_CONTEXT_KEYS,
@@ -139,6 +145,8 @@ export type MarketIntelligenceInput = {
   productBrief: ProductBriefPayload;
   marketEvidence: MarketEvidence;
   userFocus?: string;
+  /** Step 13.4 — role-separated seeds; optional additive. */
+  normalizedMarketContext?: Record<string, unknown>;
 };
 
 export const CONFIDENCE_RANK: Record<MarketConfidence, number> = {

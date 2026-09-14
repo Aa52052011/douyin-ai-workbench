@@ -54,7 +54,7 @@ describe('script.generation input/output', () => {
     expect(agent.capabilities).toContain('script-generation');
     expect(agent.temperature).toBe(0.4);
     expect(agent.maxTokens).toBe(3500);
-    expect(agent.timeoutMs).toBe(60_000);
+    expect(agent.timeoutMs).toBe(210_000);
     const prompt = new PromptRegistry().get('script.generation', 'v1');
     expect(prompt.systemPrompt).toContain('只输出一个 JSON 对象');
     const output = validateScriptOutput(buildMockScriptOutput(45), 45);
@@ -63,5 +63,14 @@ describe('script.generation input/output', () => {
     );
     expect(output.totalDuration).toBe(output.sections.reduce((sum, item) => sum + item.duration, 0));
     expect(output.totalDuration).toBe(45);
+  });
+
+  it('keeps mock script domain-aware for coffee topics without pretending to be a model', () => {
+    const coffee = buildMockScriptOutput(30, '手冲咖啡到店转化');
+    expect(coffee.title).toContain('手冲');
+    expect(coffee.cta).toMatch(/到店|来店/);
+    expect(coffee.sections.some((item) => item.subtitle.length > 18)).toBe(true);
+    const workplace = buildMockScriptOutput(30, '职场沟通清单');
+    expect(workplace.title).toContain('沟通');
   });
 });

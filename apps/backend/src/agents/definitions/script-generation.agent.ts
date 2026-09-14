@@ -3,6 +3,7 @@ import { isUuid } from '../../common/ids.js';
 import { AgentError } from '../agent.errors.js';
 import {
   DEFAULT_AGENT_TIMEOUT_MS,
+  productionLlmTimeoutMs,
   SCRIPT_GENERATION_AGENT_ID,
   SCRIPT_GENERATION_AGENT_VERSION,
   type AgentDefinition,
@@ -32,7 +33,7 @@ export const scriptGenerationDefinition: AgentDefinition = {
   version: SCRIPT_GENERATION_AGENT_VERSION,
   description: '根据已确认的内容规划 Topic 生成结构化短视频脚本。',
   capabilities: ['script-generation', 'content-creation', 'structured-output'],
-  timeoutMs: DEFAULT_AGENT_TIMEOUT_MS,
+  timeoutMs: productionLlmTimeoutMs(DEFAULT_AGENT_TIMEOUT_MS),
   defaultModel: process.env.MODEL_NAME?.trim() || undefined,
   temperature: 0.4,
   maxTokens: 3500,
@@ -106,6 +107,8 @@ export function parseScriptGenerationInput(input: unknown): ScriptGenerationInpu
       contentPlanContext: optionalObject(input, 'contentPlanContext') as ScriptGenerationInput['contentPlanContext'],
       previousScriptSummaries: optionalArray(input, 'previousScriptSummaries') as ScriptGenerationInput['previousScriptSummaries'],
       strategyContext: optionalObject(input, 'strategyContext') as ScriptGenerationInput['strategyContext'],
+      accountMemoryContext: optionalObject(input, 'accountMemoryContext') as ScriptGenerationInput['accountMemoryContext'],
+      referenceContext: optionalObject(input, 'referenceContext') as ScriptGenerationInput['referenceContext'],
     };
   } catch (error) {
     if (error instanceof AgentError && error.code === ErrorCode.AGENT_INVALID_OUTPUT) {

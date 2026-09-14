@@ -202,6 +202,10 @@ export class PublishExecutionService {
       data: { status: PublicationStatus.SUBMITTING },
     });
 
+    const videoId = publication.videoId;
+    if (!videoId) {
+      throw new AppError(ErrorCode.VIDEO_CONFLICT);
+    }
     let result: PublishVideoResult;
     try {
       result = await provider.publishVideo({
@@ -209,7 +213,7 @@ export class PublishExecutionService {
         workspaceId: job.workspaceId,
         projectId: job.projectId,
         publicationId: publication.id,
-        videoId: publication.videoId,
+        videoId,
         platformAccount: toAccountRef(account),
         outputAsset: output,
         title: publication.title,
@@ -349,6 +353,9 @@ export class PublishExecutionService {
   }
 
   private async requireOutputAsset(job: Job, publication: Publication) {
+    if (!publication.videoId) {
+      throw new AppError(ErrorCode.VIDEO_CONFLICT);
+    }
     const video = await this.prisma.video.findFirst({
       where: {
         id: publication.videoId,

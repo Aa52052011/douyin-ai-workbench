@@ -1,6 +1,7 @@
 import { getIntakeDraftPresence } from "./intake-draft-presence";
 import type { ProjectStatusSnapshot } from "./load-project-status";
-import { getProjectNextAction, type ProjectStatusFacts } from "./project-status";
+import { type ProjectStatusFacts } from "./project-status";
+import { resolveNextActionV2 } from "./ux/next-action-v2";
 
 /**
  * Client-only: merge sessionStorage Intake draft presence into nextAction wording.
@@ -21,6 +22,6 @@ export function withIntakeDraftNextAction(
   return {
     ...snapshot,
     facts,
-    nextAction: getProjectNextAction(projectId, facts),
+    nextAction: resolveNextActionV2(projectId, facts),
   };
 }

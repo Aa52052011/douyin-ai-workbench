@@ -38,6 +38,9 @@ export type ProjectOverviewSummary = {
   videoStatus?: string;
   publicationTitle?: string;
   hasMetrics?: boolean;
+  targetAudience?: string;
+  contentStyle?: string;
+  recommendedLength?: string;
 };
 
 export type ProjectStatusFacts = {

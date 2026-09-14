@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AssetLinkRole, AssetType } from '@prisma/client';
+import { pipelineAssetDefaults } from '../../../assets/asset-library.js';
 import { AppError, ErrorCode } from '../../../common/errors/app-error.js';
 import { MockSubtitleProvider } from '../../../media/providers/mock-subtitle.provider.js';
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
@@ -13,15 +14,20 @@ import { asPipelineOutput, type StageContext } from '../stage-context.js';
 export class SubtitleGenerationStage {
   constructor(private readonly subtitles: MockSubtitleProvider) {}
 
-  async run(ctx: StageContext, voiceDuration: number, voiceAssetId?: string): Promise<string> {
+  async run(
+    ctx: StageContext,
+    voiceDuration: number,
+    voiceAssetId?: string,
+    opts?: { force?: boolean; cues?: ReturnType<typeof buildSubtitleCues> },
+  ): Promise<string> {
     const output = asPipelineOutput(ctx.job.output);
-    const reused = await reusableAssetIds(ctx, output.stages.subtitle?.assetIds);
+    const reused = opts?.force ? null : await reusableAssetIds(ctx, output.stages.subtitle?.assetIds);
     if (reused?.[0]) {
       return reused[0];
     }
 
     const voiceId = voiceAssetId ?? output.stages.voice?.assetIds?.[0];
-    if (voiceId) {
+    if (voiceId && !opts?.force && !opts?.cues) {
       const crossJob = await findReusableSubtitleAsset(ctx, {
         assetId: voiceId,
         durationExact: voiceDuration,
@@ -45,7 +51,7 @@ export class SubtitleGenerationStage {
     if (ctx.failStage === 'subtitle') {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
     }
-    const cues = buildSubtitleCues(ctx.plan.voice.text, voiceDuration);
+    const cues = opts?.cues ?? buildSubtitleCues(ctx.plan.voice.text, voiceDuration);
     const assetId = randomUUID();
     const key = buildStorageKey({
       tenantId: ctx.job.tenantId,
@@ -71,6 +77,8 @@ export class SubtitleGenerationStage {
         originalFilename: 'captions.srt',
         mimeType: rendered.mimeType,
         size: rendered.size,
+        ...pipelineAssetDefaults('subtitle'),
+        generatedFromJobId: ctx.job.id,
         metadata: {
           jobId: ctx.job.id,
           videoId: ctx.plan.videoId,

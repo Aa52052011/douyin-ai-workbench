@@ -32,6 +32,15 @@ export class ProjectsController {
     return this.projects.list(auth, workspaceHint);
   }
 
+  @Get(':id/usage-summary')
+  getUsageSummary(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.projects.getUsageSummary(auth, id, workspaceHint);
+  }
+
   @Get(':id')
   getById(
     @CurrentUser() auth: AuthContext,

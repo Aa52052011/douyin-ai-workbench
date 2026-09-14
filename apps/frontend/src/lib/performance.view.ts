@@ -7,6 +7,7 @@ import {
   type PerformanceInsightResult,
   type PerformanceSummaryRecord,
 } from "./performance.types";
+import { mayShowRetentionClaim, metricSourceUserCopy, trendDelta } from "./ux/publication-monitoring-v5";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -152,10 +153,14 @@ export function latestMetricCards(snapshot: MetricSnapshotRecord | null, summary
     { label: "评论", value: formatCount(latest.comments) },
     { label: "分享", value: formatCount(latest.shares) },
     { label: "收藏", value: formatCount(latest.favorites) },
-    { label: "完播率", value: formatRate(latest.completionRate) },
-    { label: "平均观看时长", value: formatSeconds(latest.averageWatchTimeSeconds) },
     { label: "新增粉丝", value: formatCount(latest.newFollowers) },
   ];
+  if (mayShowRetentionClaim(latest.completionRate)) {
+    cards.push({ label: "完播率", value: formatRate(latest.completionRate) });
+  }
+  if (mayShowRetentionClaim(latest.averageWatchTimeSeconds)) {
+    cards.push({ label: "平均观看时长", value: formatSeconds(latest.averageWatchTimeSeconds) });
+  }
   const rates = summary?.latest;
   if (rates && (rates.likeRate != null || rates.commentRate != null || rates.shareRate != null)) {
     cards.push(
@@ -253,8 +258,14 @@ export function isQualityInsight(code?: string): boolean {
   return code === "INSUFFICIENT_DATA" || code === "MIXED_SOURCE_DATA" || code === "METRIC_DECREASE_DETECTED" || code === "SAME_TIME_CONFLICT";
 }
 
-export function insightViews(result: PerformanceInsightResult | null): InsightView[] {
+export function insightViews(result: PerformanceInsightResult | null, hasRetention = false): InsightView[] {
   return (result?.insights ?? [])
+    .filter((item) => {
+      if (!hasRetention && (item.code === "STRONG_COMPLETION_RATE" || item.code === "WEAK_COMPLETION_RATE")) {
+        return false;
+      }
+      return true;
+    })
     .map((item) => ({
       text: insightObservationText(item.code),
       isQuality: isQualityInsight(item.code),
@@ -262,8 +273,8 @@ export function insightViews(result: PerformanceInsightResult | null): InsightVi
     .filter((item) => Boolean(item.text));
 }
 
-export function performanceSignals(result: PerformanceInsightResult | null): InsightView[] {
-  return insightViews(result).filter((item) => !item.isQuality);
+export function performanceSignals(result: PerformanceInsightResult | null, hasRetention = false): InsightView[] {
+  return insightViews(result, hasRetention).filter((item) => !item.isQuality);
 }
 
 export function insufficientDataCopy(): string {
@@ -295,17 +306,23 @@ export function optimizationPretendsFullFeedback(): boolean {
 }
 
 export function metricHistoryRows(items: MetricSnapshotRecord[], publishedAt?: string | null) {
-  return sortSnapshotsNewestFirst(items).map((item) => ({
-    observedAtLabel: formatObservedAt(item.observedAt),
-    hoursLabel: hoursSince(publishedAt, item.observedAt),
-    views: formatCount(item.views),
-    likes: formatCount(item.likes),
-    comments: formatCount(item.comments),
-    shares: formatCount(item.shares),
-    favorites: formatCount(item.favorites),
-    sourceLabel: metricSourceLabel(item.source),
-    readable: Boolean(parseMetricSnapshot(item)),
-  }));
+  const sorted = sortSnapshotsNewestFirst(items);
+  return sorted.map((item, index) => {
+    const older = sorted[index + 1];
+    const viewsChange = trendDelta(older?.views, item.views);
+    return {
+      observedAtLabel: formatObservedAt(item.observedAt),
+      hoursLabel: hoursSince(publishedAt, item.observedAt),
+      views: formatCount(item.views),
+      likes: formatCount(item.likes),
+      comments: formatCount(item.comments),
+      shares: formatCount(item.shares),
+      favorites: formatCount(item.favorites),
+      changeLabel: viewsChange == null ? "—" : viewsChange > 0 ? `播放 +${viewsChange}` : `播放 ${viewsChange}`,
+      sourceLabel: metricSourceUserCopy(item.source),
+      readable: Boolean(parseMetricSnapshot(item)),
+    };
+  });
 }
 
 export function viewModelHasRawContract(view: object): boolean {

@@ -6,14 +6,17 @@ export function VideoSourceForm({
   scripts,
   pending,
   onChange,
+  collapsed = false,
 }: {
   scriptId: string;
   scripts: ScriptRecord[];
   pending: boolean;
   onChange: (scriptId: string) => void;
+  collapsed?: boolean;
 }) {
-  return (
+  const body = (
     <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      <p className="mb-2 text-sm text-neutral-600">已带入当前脚本、选题和项目，无需再填行业或平台。</p>
       <label className="mb-1 block text-sm font-medium" htmlFor="video-script">
         脚本
       </label>
@@ -33,4 +36,13 @@ export function VideoSourceForm({
       </select>
     </div>
   );
+  if (collapsed && scriptId) {
+    return (
+      <details>
+        <summary className="cursor-pointer text-sm text-neutral-600">更换脚本</summary>
+        <div className="mt-3">{body}</div>
+      </details>
+    );
+  }
+  return body;
 }

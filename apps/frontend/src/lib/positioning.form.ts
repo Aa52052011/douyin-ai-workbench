@@ -340,6 +340,10 @@ export function marketResearchHref(projectId: string): string {
   return `/dashboard/projects/${projectId}/market/research`;
 }
 
+export function contentPlansHref(projectId: string): string {
+  return `/dashboard/projects/${projectId}/content/plans`;
+}
+
 export function productInformationHref(projectId: string): string {
   return `/dashboard/projects/${projectId}/product`;
 }

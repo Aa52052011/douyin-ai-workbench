@@ -1,6 +1,7 @@
 import { formatVideoTime } from "./video.form";
 import type { VideoRecord } from "./video.types";
 import { PUBLICATION_TITLE_MAX, PUBLICATION_URL_MAX, PUBLICATION_WORK_ID_MAX, type PublicationCompleteForm, type PublicationRecord } from "./publication.types";
+import { SHORT_LINK_HUMAN_ERROR, isDouyinShortLink } from "./ux/publication-monitoring-v5";
 
 export function isEligiblePublishVideo(video: VideoRecord): boolean {
   return video.status === "COMPLETED" && Boolean(video.outputAsset?.contentPath || video.outputAsset?.id);
@@ -63,6 +64,9 @@ export function validateExternalUrl(value: string): string | null {
     if (parsed.username || parsed.password) {
       return "请填写有效的作品链接。";
     }
+    if (isDouyinShortLink(trimmed)) {
+      return SHORT_LINK_HUMAN_ERROR;
+    }
     return null;
   } catch {
     return "请填写有效的作品链接。";
@@ -74,6 +78,9 @@ export function canSubmitComplete(form: PublicationCompleteForm): boolean {
   const workId = form.externalPostId.trim();
   if (!url && !workId) {
     return false;
+  }
+  if (url && isDouyinShortLink(url)) {
+    return Boolean(workId);
   }
   return !validateExternalUrl(form.externalUrl);
 }

@@ -5,6 +5,11 @@ import { campaignStrategyDefinition } from './definitions/campaign-strategy.agen
 import { contentPlanningDefinition } from './definitions/content-planning.agent.js';
 import { marketIntelligenceDefinition } from './definitions/market-intelligence.agent.js';
 import { marketIntakeDefinition } from './definitions/market-intake.agent.js';
+import { productionQualityDefinition } from './definitions/production-quality.agent.js';
+import { marketResearchPlanDefinition } from './definitions/market-research-plan.agent.js';
+import { performanceAnalysisDefinition } from './definitions/performance-analysis.agent.js';
+import { performanceLearningDefinition } from './definitions/performance-learning.agent.js';
+import { referenceAnalysisDefinition } from './definitions/reference-analysis.agent.js';
 import { productIntakeDefinition } from './definitions/product-intake.agent.js';
 import { scriptGenerationDefinition } from './definitions/script-generation.agent.js';
 import { systemEchoDefinition } from './definitions/system-echo.agent.js';
@@ -24,6 +29,11 @@ export class AgentRegistry {
     this.register(campaignStrategyDefinition);
     this.register(productIntakeDefinition);
     this.register(marketIntakeDefinition);
+    this.register(referenceAnalysisDefinition);
+    this.register(productionQualityDefinition);
+    this.register(marketResearchPlanDefinition);
+    this.register(performanceLearningDefinition);
+    this.register(performanceAnalysisDefinition);
   }
 
   register(definition: AgentDefinition): void {

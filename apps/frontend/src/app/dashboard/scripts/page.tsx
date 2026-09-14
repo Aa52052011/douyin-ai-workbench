@@ -64,6 +64,7 @@ export default function ScriptsPage() {
         }
       })
       .catch((err: Error) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- token-gated initial load
   }, [accessToken]);
 
   async function generate(event: React.FormEvent) {
@@ -99,7 +100,11 @@ export default function ScriptsPage() {
     }
     setBusy(true);
     try {
-      const data = await api<Script>(`/scripts/${current.id}/confirm`, { method: "POST", accessToken });
+      const data = await api<Script>(`/scripts/${current.id}/confirm`, {
+        method: "POST",
+        accessToken,
+        headers: { "x-approval-source": "USER_UI" },
+      });
       setCurrent(data);
       await loadScripts(projectId, planId);
     } catch (err) {

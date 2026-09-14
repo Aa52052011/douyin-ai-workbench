@@ -22,8 +22,18 @@ export function escapeSubtitlesFilterPath(absPath: string): string {
   return `subtitles=filename='${escaped}'`;
 }
 
+export type FfmpegSceneClip = {
+  path: string;
+  duration: number;
+  kind?: 'image' | 'video';
+  sourceStartSec?: number;
+  freezePadSec?: number;
+  /** Fraction of source height to drop from the top before COVER (browser chrome). */
+  cropTopRatio?: number;
+};
+
 export function buildFfmpegComposeArgs(input: {
-  scenes: Array<{ path: string; duration: number }>;
+  scenes: FfmpegSceneClip[];
   voicePath: string;
   subtitlePath: string;
   outputPath: string;
@@ -34,13 +44,25 @@ export function buildFfmpegComposeArgs(input: {
 }): string[] {
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error'];
   for (const scene of input.scenes) {
-    args.push('-loop', '1', '-t', String(scene.duration), '-i', scene.path);
+    if (scene.kind === 'video') {
+      if (scene.sourceStartSec && scene.sourceStartSec > 0) {
+        args.push('-ss', String(scene.sourceStartSec));
+      }
+      const clipSec = Math.max(0.05, scene.duration - (scene.freezePadSec ?? 0));
+      args.push('-t', String(clipSec), '-i', scene.path);
+    } else {
+      args.push('-loop', '1', '-t', String(scene.duration), '-i', scene.path);
+    }
   }
   args.push('-i', input.voicePath);
   const filters: string[] = [];
-  input.scenes.forEach((_, index) => {
+  input.scenes.forEach((scene, index) => {
+    const freeze =
+      scene.kind === 'video' && scene.freezePadSec && scene.freezePadSec > 0
+        ? `,tpad=stop_mode=clone:stop_duration=${scene.freezePadSec}`
+        : '';
     filters.push(
-      `[${index}:v]scale=${input.width}:${input.height}:force_original_aspect_ratio=increase,crop=${input.width}:${input.height},setsar=1,fps=${input.fps}[v${index}]`,
+      `[${index}:v]${coverFilter(input.width, input.height, scene.cropTopRatio)}${freeze},fps=${input.fps}[v${index}]`,
     );
   });
   const concatInputs = input.scenes.map((_, index) => `[v${index}]`).join('');
@@ -66,4 +88,11 @@ export function buildFfmpegComposeArgs(input: {
     input.outputPath,
   );
   return args;
+}
+
+export function coverFilter(width: number, height: number, cropTopRatio = 0): string {
+  const ratio = Math.min(0.35, Math.max(0, cropTopRatio));
+  const preCrop =
+    ratio > 0 ? `crop=iw:ih*(1-${ratio.toFixed(3)}):0:ih*${ratio.toFixed(3)},` : '';
+  return `${preCrop}scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`;
 }

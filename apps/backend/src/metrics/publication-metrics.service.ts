@@ -15,6 +15,7 @@ import {
 import {
   incomingObservedAtSemantic,
   manualCollectionKey,
+  sameManualMetricsContent,
   sameManualMetricsRequest,
   type ManualMetricsFingerprintInput,
   type ManualMetricsStored,
@@ -65,6 +66,20 @@ export class PublicationMetricsService {
         if (existing) {
           assertSameSemanticRequest(publication.id, existing, incoming);
           return existing;
+        }
+        const sameObserved = await tx.publicationMetricSnapshot.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            publicationId: publication.id,
+            source: MetricSource.MANUAL,
+            observedAt,
+          },
+        });
+        const contentHit = sameObserved.find((row) =>
+          sameManualMetricsContent(publication.id, row, metrics, observedAt),
+        );
+        if (contentHit) {
+          return contentHit;
         }
         return tx.publicationMetricSnapshot.create({
           data: {

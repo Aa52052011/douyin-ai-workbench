@@ -9,6 +9,7 @@ import type {
   VideoProductionPlan,
 } from './production-plan.types.js';
 import { buildVisualPrompt, DEFAULT_VISUAL_NEGATIVE_PROMPT } from './visual-prompt.builder.js';
+import { resolveVoiceConfig } from '../../voice/voice-resolve.js';
 
 const EXTRA_BUDGET: Record<Exclude<SceneSourceKind, 'section'>, number> = {
   hook: 2,
@@ -29,6 +30,20 @@ export function asScriptOutput(payload: unknown): ScriptOutput {
 }
 
 export function buildVoiceText(payload: ScriptOutput): string {
+  return normalizeTtsNarration(
+    [payload.hook, payload.opening, ...payload.sections.map((item) => item.narration), payload.ending, payload.cta]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join('\n'),
+  );
+}
+
+/** Pronunciation-only TTS normalization. Must not change factual claims. */
+export function normalizeTtsNarration(text: string): string {
+  return text.replaceAll('AI', 'A I');
+}
+
+export function originalVoiceText(payload: ScriptOutput): string {
   return [payload.hook, payload.opening, ...payload.sections.map((item) => item.narration), payload.ending, payload.cta]
     .map((item) => item.trim())
     .filter(Boolean)
@@ -103,6 +118,10 @@ export function buildProductionPlan(input: {
   }
   const targetDuration = input.config?.targetDuration ?? payload.totalDuration;
   const voiceText = buildVoiceText(payload);
+  const resolved = resolveVoiceConfig({
+    preferredVoiceId: input.config?.preferredVoiceId,
+    directorVoiceId: input.config?.voiceStyle,
+  });
   const plan: VideoProductionPlan = {
     version: 1,
     scriptId: input.scriptId,
@@ -118,6 +137,9 @@ export function buildProductionPlan(input: {
       language: 'zh-CN',
       speed: 1,
       text: voiceText,
+      resolvedVoiceId: resolved.resolvedVoiceId,
+      voiceType: resolved.voiceType,
+      voiceProfileId: resolved.voiceProfileId,
     },
     scenes,
     audio: { backgroundMusic: 'none', volume: 0.15 },
@@ -182,6 +204,7 @@ function fingerprintPlan(plan: VideoProductionPlan): string {
         plan.videoId,
         plan.voice.text,
         plan.voice.style,
+        plan.voice.resolvedVoiceId ?? '',
         String(plan.targetDuration),
         plan.aspectRatio,
         plan.resolution,

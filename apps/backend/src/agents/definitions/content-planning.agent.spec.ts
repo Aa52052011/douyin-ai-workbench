@@ -48,6 +48,36 @@ describe('content.planning input/output', () => {
     expect(parseContentPlanningInput(validInput).performanceFeedback).toBeUndefined();
   });
 
+  it('accepts optional learningContext without changing output keys', () => {
+    const parsed = parseContentPlanningInput({
+      ...validInput,
+      learningContext: {
+        confirmed: [{ key: 'PERFORMANCE_METRIC:HIGH_LIKE_RATE', summary: '多次支持', supportCount: 2, status: 'confirmed' }],
+        candidate: [],
+      },
+    });
+    expect(parsed.learningContext?.confirmed[0]?.supportCount).toBe(2);
+    const withBatch = parseContentPlanningInput({
+      ...validInput,
+      learningContext: {
+        confirmed: [{ key: 'PERFORMANCE_METRIC:HIGH_LIKE_RATE', summary: '多次支持', supportCount: 2, status: 'confirmed' }],
+        candidate: [{ key: 'PERFORMANCE_METRIC:HIGH_SHARE_RATE', summary: '单次迹象', supportCount: 1, status: 'candidate' }],
+        latestRecommendations: [{ actionLabel: '下一批适当增加类似内容', rationale: '已有多次独立发布数据支持' }],
+        previousBatchSummary: { planId: 'plan-1', title: '本批计划', sampleSize: 2, publicationsConsidered: 2 },
+      },
+    });
+    expect(withBatch.learningContext?.confirmed).toHaveLength(1);
+    expect(withBatch.learningContext?.candidate).toHaveLength(1);
+    expect(withBatch.learningContext?.latestRecommendations?.[0]?.actionLabel).toContain('增加');
+    expect(withBatch.learningContext?.previousBatchSummary?.sampleSize).toBe(2);
+    const output = validateContentPlanOutput(buildMockContentPlanOutput(), {
+      planningDays: 7,
+      postsPerDay: 1,
+      pillarNames: buildMockContentPlanOutput().pillarAllocation.map((item) => item.pillarName),
+    });
+    expect(output).not.toHaveProperty('learningContext');
+  });
+
   it('rejects planningDays other than 7', () => {
     expectCode(
       () => parseContentPlanningInput({ ...validInput, planningDays: 14 }),
@@ -81,7 +111,7 @@ describe('content.planning input/output', () => {
 
   it('keeps mock topics unchanged without strategy and reflects payload guidance with strategy', () => {
     const plain = buildMockContentPlanOutput({ planningDays: 7, postsPerDay: 1 });
-    expect(plain.topics[0].title).toBe('第1天选题1：认知纠偏落地法');
+    expect(plain.topics[0].title).toBe('本批第1条：认知纠偏落地法');
     expect(plain.topics[0].contentPillar).toBe('认知纠偏');
     expect(Object.keys(plain.topics[0]).sort()).toEqual(
       [

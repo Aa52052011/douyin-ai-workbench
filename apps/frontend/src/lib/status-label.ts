@@ -1,3 +1,5 @@
+import { uiStatusLabel, uiStatusTone } from "./ui-labels";
+
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "等待中",
   RUNNING: "生成中",
@@ -13,26 +15,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function statusLabel(status: string | null | undefined): string {
-  if (!status) {
-    return "未知";
-  }
-  return STATUS_LABELS[status] ?? status;
+  if (!status) return "未知状态";
+  return STATUS_LABELS[status] ?? uiStatusLabel(status);
 }
 
 export function statusTone(status: string | null | undefined): "neutral" | "progress" | "success" | "danger" {
-  switch (status) {
-    case "FAILED":
-      return "danger";
-    case "COMPLETED":
-    case "CONFIRMED":
-    case "PUBLISHED":
-    case "READY":
-      return "success";
-    case "RUNNING":
-    case "PROCESSING":
-    case "PENDING":
-      return "progress";
-    default:
-      return "neutral";
-  }
+  return uiStatusTone(status);
 }

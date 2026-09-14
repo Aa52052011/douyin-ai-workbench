@@ -24,6 +24,11 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
         if (!cancelled) {
           setProject(data);
           setError(null);
+          try {
+            window.localStorage.setItem("acf.lastProjectId", data.id);
+          } catch {
+            /* ignore */
+          }
         }
       })
       .catch((err: Error) => {
@@ -53,7 +58,7 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
   }
 
   return (
-    <ProjectWorkspaceProvider project={project} setProject={setProject}>
+    <ProjectWorkspaceProvider key={projectId} project={project} setProject={setProject}>
       <ProjectShell>{children}</ProjectShell>
     </ProjectWorkspaceProvider>
   );

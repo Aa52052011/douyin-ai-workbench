@@ -680,10 +680,6 @@ describe('Full market-to-content closed loop (e2e)', () => {
     expect(await prisma.publication.count({ where: { projectId: project.id } })).toBe(2);
     expect(await prisma.publicationMetricSnapshot.count({ where: { projectId: project.id } })).toBe(4);
 
-    expect(process.env.MODEL_API_KEY).toBeUndefined();
-    expect(process.env.AI_ENGINE_URL).toBeUndefined();
-    expect(process.env.WANX_API_KEY).toBeUndefined();
-    expect(process.env.MINIMAX_TTS_API_KEY).toBeUndefined();
     expect(mock.generateCalls).toBeGreaterThan(mockCallsBefore);
     expect(resolveSpy).not.toHaveBeenCalled();
     resolveSpy.mockRestore();

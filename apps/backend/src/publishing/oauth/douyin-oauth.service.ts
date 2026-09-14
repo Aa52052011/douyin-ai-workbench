@@ -9,9 +9,12 @@ import { SECRET_STORE } from '../secrets/secret.types.js';
 import {
   assertDouyinOAuthConfigured,
   DOUYIN_ACCESS_TOKEN_REFRESH_WINDOW_MS,
-  DOUYIN_OAUTH_SCOPE_USER_INFO,
   DOUYIN_OAUTH_STATE_TTL_MS,
+  evaluateGrantedScopes,
+  formatDouyinScopeParam,
   joinDouyinAuthorizeUrl,
+  scopesForOAuthPurpose,
+  type DouyinOAuthPurpose,
 } from './douyin-oauth.config.js';
 import { sanitizeDouyinOAuthError } from './douyin-oauth.errors.js';
 import type { DouyinOAuthClient, DouyinTokenSet } from './douyin-oauth.types.js';
@@ -40,25 +43,30 @@ export class DouyinOAuthService {
     @Inject(OAUTH_STATE_STORE) private readonly states: OAuthStateStore,
   ) {}
 
-  async startConnect(auth: AuthContext, workspaceHint?: string): Promise<{ authorizationUrl: string }> {
+  async startConnect(
+    auth: AuthContext,
+    workspaceHint?: string,
+    purpose: DouyinOAuthPurpose = 'PUBLISHING',
+  ): Promise<{ authorizationUrl: string; purpose: DouyinOAuthPurpose; requestedScopes: string[] }> {
     const config = assertDouyinOAuthConfigured();
     const workspaceId = resolveWorkspaceId(auth, workspaceHint);
+    const requestedScopes = scopesForOAuthPurpose(purpose);
     const state = generateOAuthState();
     const context = buildOAuthStateContext({
       tenantId: auth.tenantId,
       workspaceId,
       userId: auth.userId,
-      requestedScopes: [DOUYIN_OAUTH_SCOPE_USER_INFO],
+      requestedScopes,
       ttlMs: DOUYIN_OAUTH_STATE_TTL_MS,
     });
     await this.states.save(state, context, DOUYIN_OAUTH_STATE_TTL_MS);
     const url = new URL(joinDouyinAuthorizeUrl(config.oauthBaseUrl));
     url.searchParams.set('client_key', config.clientKey);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', DOUYIN_OAUTH_SCOPE_USER_INFO);
+    url.searchParams.set('scope', formatDouyinScopeParam(requestedScopes));
     url.searchParams.set('redirect_uri', config.redirectUri);
     url.searchParams.set('state', state);
-    return { authorizationUrl: url.toString() };
+    return { authorizationUrl: url.toString(), purpose, requestedScopes };
   }
 
   async handleCallback(query: { code?: string; state?: string; error?: string }): Promise<PlatformAccountPublic> {
@@ -71,6 +79,10 @@ export class DouyinOAuthService {
     }
     try {
       const tokens = await this.oauth.exchangeCode({ code: query.code });
+      evaluateGrantedScopes({
+        purpose: consumed.requestedScopes.includes('video.create.bind') ? 'PUBLISHING' : 'LOGIN_ONLY',
+        granted: tokens.scopes,
+      });
       const user = await this.oauth.getUserInfo({
         accessToken: tokens.accessToken,
         openId: tokens.openId,

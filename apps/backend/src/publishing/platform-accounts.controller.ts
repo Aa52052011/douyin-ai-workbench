@@ -18,6 +18,7 @@ import { Permission } from '../authz/permissions.js';
 import { PermissionsGuard } from '../authz/permissions.guard.js';
 import { RequirePermission } from '../authz/require-permission.decorator.js';
 import { ListPlatformAccountsQueryDto } from './dto/list-platform-accounts.dto.js';
+import { parseDouyinOAuthPurpose } from './oauth/douyin-oauth.config.js';
 import { DouyinOAuthService } from './oauth/douyin-oauth.service.js';
 import { connectedHtml } from './platform-accounts.mapper.js';
 
@@ -29,8 +30,12 @@ export class PlatformAccountsController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermission(Permission.PLATFORM_ACCOUNT_MANAGE)
-  connect(@CurrentUser() auth: AuthContext, @Headers('x-workspace-id') workspaceHint?: string) {
-    return this.accounts.startConnect(auth, workspaceHint);
+  connect(
+    @CurrentUser() auth: AuthContext,
+    @Headers('x-workspace-id') workspaceHint?: string,
+    @Query('purpose') purpose?: string,
+  ) {
+    return this.accounts.startConnect(auth, workspaceHint, parseDouyinOAuthPurpose(purpose));
   }
 
   @Get('douyin/callback')

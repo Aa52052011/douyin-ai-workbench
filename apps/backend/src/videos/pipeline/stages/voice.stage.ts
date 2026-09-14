@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AssetLinkRole, AssetType } from '@prisma/client';
 import { AppError, ErrorCode } from '../../../common/errors/app-error.js';
@@ -7,16 +7,29 @@ import { TTS_PROVIDER } from '../../../media/providers/tts.token.js';
 import type { TtsProvider } from '../../../media/providers/media-provider.types.js';
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
 import { inferVoicePreset } from '../../../media/tts/tts-voice.js';
+import { resolveVoiceConfig } from '../../../voice/voice-resolve.js';
+import { pipelineAssetDefaults } from '../../../assets/asset-library.js';
 import { reusableAssetIds } from '../asset-reuse.js';
 import { metadataNumber, metadataString } from '../visual-reuse.js';
 import { findReusableVoiceAsset, voiceTextFingerprint } from '../voice-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
+import { UsageMeteringService } from '../../../usage/usage-metering.service.js';
+import { getMeteringScope } from '../../../usage/metering-context.js';
+import { usageIdempotencyKey } from '../../../usage/usage-idempotency.js';
+import { withUsageMetering } from '../../../usage/with-usage-metering.js';
+import { UsageOperationType, UsageResourceType, UsageUnitType } from '@prisma/client';
 
 @Injectable()
 export class VoiceGenerationStage {
-  constructor(@Inject(TTS_PROVIDER) private readonly tts: TtsProvider) {}
+  constructor(
+    @Inject(TTS_PROVIDER) private readonly tts: TtsProvider,
+    @Optional() private readonly metering?: UsageMeteringService,
+  ) {}
 
-  async run(ctx: StageContext): Promise<{
+  async run(
+    ctx: StageContext,
+    opts?: { force?: boolean },
+  ): Promise<{
     assetId: string;
     duration: number;
     durationExact: number;
@@ -25,7 +38,7 @@ export class VoiceGenerationStage {
     usage?: { audioCharacters: number; audioSeconds: number; audioSecondsExact?: number };
   }> {
     const output = asPipelineOutput(ctx.job.output);
-    const reusedIds = await reusableAssetIds(ctx, output.stages.voice?.assetIds);
+    const reusedIds = opts?.force ? null : await reusableAssetIds(ctx, output.stages.voice?.assetIds);
     if (reusedIds?.[0]) {
       const asset = await ctx.prisma.asset.findFirst({
         where: { id: reusedIds[0], tenantId: ctx.job.tenantId },
@@ -40,7 +53,7 @@ export class VoiceGenerationStage {
       };
     }
 
-    const crossJob = await findReusableVoiceAsset(ctx);
+    const crossJob = opts?.force ? null : await findReusableVoiceAsset(ctx);
     if (crossJob) {
       await ctx.prisma.assetLink.create({
         data: {
@@ -73,15 +86,60 @@ export class VoiceGenerationStage {
       projectId: ctx.job.projectId,
       assetId,
     });
-    const rendered = await this.tts.synthesize({
-      text: ctx.plan.voice.text,
-      storageKey: key,
-      voice: ctx.plan.voice.style,
-      language: ctx.plan.voice.language,
-      speed: ctx.plan.voice.speed,
-      clientRequestId: `${ctx.job.id}:voice:${ctx.generationVersion}`,
+    const resolved = resolveVoiceConfig({
+      preferredVoiceId: ctx.plan.voice.resolvedVoiceId,
+      voiceType: ctx.plan.voice.voiceType,
+      voiceProfileId: ctx.plan.voice.voiceProfileId,
     });
+    const rendered = await withUsageMetering(
+      this.metering,
+      {
+        tenantId: ctx.job.tenantId,
+        workspaceId: ctx.job.workspaceId,
+        projectId: ctx.job.projectId,
+        videoId: ctx.plan.videoId,
+        jobId: ctx.job.id,
+        generationVersion: ctx.generationVersion,
+        stage: getMeteringScope()?.stage ?? 'VOICE',
+        repairAttempt: getMeteringScope()?.repairAttempt,
+        operationType: UsageOperationType.VOICE_SYNTHESIS,
+        provider: this.tts.id,
+        model: 'model' in this.tts ? (this.tts as { model?: string }).model : undefined,
+        resourceType: UsageResourceType.TTS,
+        idempotencyKey: usageIdempotencyKey([
+          'tts',
+          ctx.job.id,
+          ctx.generationVersion,
+          `${ctx.job.id}:voice:${ctx.generationVersion}`,
+          getMeteringScope()?.repairAttempt ?? 0,
+        ]),
+        metadata: {
+          stage: 'VOICE',
+          generationVersion: ctx.generationVersion,
+          billable: this.tts.id !== 'mock-tts',
+          reason: getMeteringScope()?.repairAttempt ? 'quality_repair' : 'production',
+          repairAttempt: getMeteringScope()?.repairAttempt ?? 0,
+        },
+      },
+      () =>
+        this.tts.synthesize({
+          text: ctx.plan.voice.text,
+          storageKey: key,
+          voice: resolved.providerVoiceId,
+          language: ctx.plan.voice.language,
+          speed: ctx.plan.voice.speed,
+          clientRequestId: `${ctx.job.id}:voice:${ctx.generationVersion}`,
+        }),
+      (item) => ({
+        characterCount: item.usage?.inputCharacters ?? ctx.plan.voice.text.length,
+        durationSeconds: item.usage?.audioSecondsExact ?? item.duration,
+        totalUnits: item.usage?.inputCharacters ?? ctx.plan.voice.text.length,
+        unitType: UsageUnitType.CHARACTERS,
+        computeMs: item.usage?.providerDurationMs,
+      }),
+    );
     const originalFilename = filenameForAudioMime(rendered.mimeType);
+    const library = pipelineAssetDefaults('voice');
     try {
       await ctx.prisma.asset.create({
         data: {
@@ -97,6 +155,15 @@ export class VoiceGenerationStage {
           mimeType: rendered.mimeType,
           size: rendered.size,
           duration: rendered.duration,
+          sourceType: library.sourceType,
+          ownerType: library.ownerType,
+          referenceOnly: library.referenceOnly,
+          reusable: library.reusable,
+          rightsStatus: library.rightsStatus,
+          consentStatus: library.consentStatus,
+          libraryVisible: library.libraryVisible,
+          provider: this.tts.id,
+          generatedFromJobId: ctx.job.id,
           metadata: {
             jobId: ctx.job.id,
             videoId: ctx.plan.videoId,
@@ -110,6 +177,9 @@ export class VoiceGenerationStage {
             duration: rendered.duration,
             durationExact: rendered.usage?.audioSecondsExact ?? rendered.duration,
             voiceTextHash: voiceTextFingerprint(ctx.plan.voice.text),
+            voiceType: ctx.plan.voice.voiceType ?? 'SYSTEM',
+            resolvedVoiceId: ctx.plan.voice.resolvedVoiceId ?? 'sys.default',
+            ...(ctx.plan.voice.voiceProfileId ? { voiceProfileId: ctx.plan.voice.voiceProfileId } : {}),
             ...(rendered.usage?.providerDurationMs != null
               ? { providerDuration: rendered.usage.providerDurationMs }
               : {}),

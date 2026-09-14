@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ContextualGuidanceV1 } from "../../../../../components/contextual-guidance-v1";
 import { EmptyState } from "../../../../../components/empty-state";
+import { ManualPublishCardV5 } from "../../../../../components/manual-publish-card-v5";
+import { ManualPublishGuideV4 } from "../../../../../components/manual-publish-guide";
 import { PageHeader } from "../../../../../components/page-header";
+import { PublicationDataHub } from "../../../../../components/publication-data-hub";
 import { PublicationCompleteFormFields } from "../../../../../components/publication-complete-form";
 import { PublicationDetail } from "../../../../../components/publication-detail";
 import { PublicationHistory } from "../../../../../components/publication-history";
@@ -32,9 +36,11 @@ import { exportVideoFile, listVideos } from "../../../../../lib/video.api";
 import { canExportVideo } from "../../../../../lib/video.form";
 import type { VideoRecord } from "../../../../../lib/video.types";
 import { PUBLICATION_TITLE_MAX } from "../../../../../lib/publication.types";
+import { registrationVerificationCopy } from "../../../../../lib/ux/publication-monitoring-v5";
 
 function PublishPageInner() {
   const { projectId } = useParams<{ projectId: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const queryVideoId = searchParams.get("videoId");
   const { project } = useProjectWorkspace();
@@ -53,6 +59,9 @@ function PublishPageInner() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [creatingNew, setCreatingNew] = useState(false);
+  const [readyToRegister, setReadyToRegister] = useState(false);
+  const [justRegistered, setJustRegistered] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
   useEffect(() => {
     if (!accessToken || !projectId) {
@@ -112,6 +121,9 @@ function PublishPageInner() {
     setCompleteForm(emptyCompleteForm());
     setActionError(null);
     setExportMessage(null);
+    setReadyToRegister(false);
+    setJustRegistered(false);
+    setDownloaded(false);
   }
 
   function replacePublication(next: PublicationRecord) {
@@ -149,6 +161,9 @@ function PublishPageInner() {
       const updated = await completeManualPublication(accessToken, current.id, completeForm);
       replacePublication(updated);
       setCompleteForm(emptyCompleteForm());
+      setJustRegistered(true);
+      setReadyToRegister(false);
+      router.push(`/dashboard/monitoring/${updated.id}`);
     } catch (error) {
       setActionError(humanizePublicationError(error, "complete"));
     } finally {
@@ -171,7 +186,8 @@ function PublishPageInner() {
       link.download = file.filename;
       link.click();
       URL.revokeObjectURL(url);
-      setExportMessage("视频已导出");
+      setExportMessage("浏览器已开始下载。是否保存到电脑由浏览器决定。");
+      setDownloaded(true);
     } catch {
       setActionError("视频导出失败，请稍后重试。");
     } finally {
@@ -182,9 +198,21 @@ function PublishPageInner() {
   return (
     <div>
       <PageHeader
-        title="发布"
-        description="导出成片并记录已发布作品，后续可以继续录入作品表现和优化建议。"
-        breadcrumb={`项目 / ${project.name} / 发布`}
+        title="发布与数据"
+        description="发布运营：导出成片后手动发布并登记作品。一键发布尚未完成正式验收。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "发布与数据" },
+        ]}
+      />
+      <ContextualGuidanceV1 id="publish" />
+      <PublicationDataHub
+        projectId={projectId}
+        pendingPublishCount={usableVideos.filter((item) => !publications.some((pub) => pub.videoId === item.id)).length}
+        pendingRegisterCount={publications.filter((item) => item.status === "PENDING").length}
+        monitoringCount={publications.filter((item) => item.status === "PUBLISHED").length}
+        hasPublished={publications.some((item) => item.status === "PUBLISHED")}
       />
 
       {loading ? (
@@ -223,12 +251,24 @@ function PublishPageInner() {
 
           <PublicationSourceForm videoId={videoId} videos={usableVideos} pending={pending} onChange={changeVideo} />
 
+          {selectedVideo ? (
+            <ManualPublishCardV5
+              title={selectedVideo.scriptTitle || title || "未命名视频"}
+              verticalReady={canExportVideo(selectedVideo.status)}
+              downloaded={downloaded}
+              confirmPending={pending}
+              showGuide={downloaded}
+              onConfirmPublished={() => setReadyToRegister(true)}
+            />
+          ) : null}
+
           {selectedVideo && canExportVideo(selectedVideo.status) ? (
             <button className="rounded-md border px-4 py-2 text-sm disabled:opacity-50" type="button" disabled={pending} onClick={() => void download()}>
-              下载视频
+              下载竖版视频
             </button>
           ) : null}
           {exportMessage ? <p className="text-sm text-neutral-700">{exportMessage}</p> : null}
+          {exportMessage ? <ManualPublishGuideV4 /> : null}
 
           {actionError ? (
             <p className="text-sm text-red-600" role="alert">
@@ -267,15 +307,15 @@ function PublishPageInner() {
           {current && !creatingNew && currentView ? <PublicationDetail view={currentView} /> : null}
           {current && !currentView ? <p className="text-sm text-neutral-600">该发布记录无法读取</p> : null}
 
-          {current && !creatingNew && canManualComplete(current) ? (
+          {current && !creatingNew && canManualComplete(current) && readyToRegister ? (
             <PublicationCompleteFormFields form={completeForm} pending={pending} onChange={setCompleteForm} onSubmit={() => void complete()} />
           ) : null}
 
           {current && !creatingNew && canOpenMetrics(current.status) ? (
             <div className="space-y-2">
-              <p className="text-sm text-neutral-700">已发布，可以继续录入表现数据。</p>
+              <p className="text-sm text-neutral-700">{registrationVerificationCopy("USER_ASSERTED")}。可以继续录入数据。</p>
               <Link className="inline-block rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={performanceHref(projectId, current.id)}>
-                录入表现数据
+                {justRegistered ? "录入第一组数据" : "录入数据"}
               </Link>
             </div>
           ) : null}

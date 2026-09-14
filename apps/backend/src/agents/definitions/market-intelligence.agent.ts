@@ -8,6 +8,7 @@ import {
   MARKET_INTELLIGENCE_AGENT_ID,
   MARKET_INTELLIGENCE_AGENT_VERSION,
   MARKET_INTELLIGENCE_TIMEOUT_MS,
+  productionLlmTimeoutMs,
   type AgentDefinition,
 } from '../agent.types.js';
 import {
@@ -39,7 +40,7 @@ export const marketIntelligenceDefinition: AgentDefinition = {
   version: MARKET_INTELLIGENCE_AGENT_VERSION,
   description: '基于 compact MarketEvidence 解释当前研究样本，不产出推广方案。',
   capabilities: ['market-intelligence', 'structured-output', 'evidence-grounded'],
-  timeoutMs: MARKET_INTELLIGENCE_TIMEOUT_MS,
+  timeoutMs: productionLlmTimeoutMs(MARKET_INTELLIGENCE_TIMEOUT_MS),
   defaultModel: process.env.MODEL_NAME?.trim() || undefined,
   temperature: 0.2,
   maxTokens: 3500,
@@ -85,6 +86,9 @@ export function parseMarketIntelligenceInput(input: unknown): MarketIntelligence
     productBrief,
     marketEvidence: requireMarketEvidence(input.marketEvidence),
     userFocus: optionalString(input, 'userFocus', MARKET_INSIGHT_LIMITS.userFocus),
+    ...(isRecord(input.normalizedMarketContext)
+      ? { normalizedMarketContext: input.normalizedMarketContext }
+      : {}),
   };
 }
 

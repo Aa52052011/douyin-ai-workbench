@@ -3,7 +3,7 @@ import { Worker, type Job as BullJob } from 'bullmq';
 import { Redis } from 'ioredis';
 import { isUuid } from '../common/ids.js';
 import { JobProcessor } from './job.processor.js';
-import { ACF_JOB_QUEUE_NAME } from './queue/queue.constants.js';
+import { resolveJobQueueName } from './queue/queue.constants.js';
 import { resolveRedisUrl } from './queue/redis-config.js';
 
 @Injectable()
@@ -18,7 +18,7 @@ export class JobWorker implements OnModuleDestroy {
     const url = resolveRedisUrl();
     this.connection = new Redis(url, { maxRetriesPerRequest: null });
     this.worker = new Worker(
-      ACF_JOB_QUEUE_NAME,
+      resolveJobQueueName(),
       async (bullJob: BullJob<{ jobId?: string }>) => {
         const jobId = resolveQueuedJobId(bullJob);
         if (!jobId) {

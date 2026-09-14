@@ -10,6 +10,7 @@ import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { AccountMemoryService } from '../memory/account-memory.service.js';
 import { toPublicContentPlan, type ContentPlanPublic } from './content-plans.mapper.js';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class ContentPlansService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly agents: AgentsService,
+    private readonly memory: AccountMemoryService,
   ) {}
 
   async list(
@@ -138,6 +140,7 @@ export class ContentPlansService {
       where: { id_tenantId: { id: current.id, tenantId: auth.tenantId } },
       data: { status: ContentPlanStatus.CONFIRMED },
     });
+    void this.memory.refreshMemorySafe(auth, updated.projectId, 'CONTENT_PLAN_CONFIRMED', workspaceHint);
     return toPublicContentPlan(updated);
   }
 

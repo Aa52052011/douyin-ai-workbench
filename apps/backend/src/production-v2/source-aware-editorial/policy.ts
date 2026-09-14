@@ -1,0 +1,88 @@
+import { SOURCE_TYPE_EDITORIAL_POLICY_VERSION, type SourceVisualTypeV1 } from './constants.js';
+
+export const SOURCE_TYPE_EDITORIAL_POLICY = {
+  schemaVersion: SOURCE_TYPE_EDITORIAL_POLICY_VERSION,
+  byType: {
+    SCREEN_RECORDING_UI_DEMO: {
+      defaultStrategy: 'WIDE_FIRST' as const,
+      defaultScale: null,
+      mediumIsDefault: false,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: true,
+      textCutHardFail: true,
+    },
+    CAMERA_HUMAN: {
+      defaultStrategy: 'SUBJECT_FIRST' as const,
+      defaultScale: 'MEDIUM_FOCUS' as const,
+      mediumIsDefault: true,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: false,
+      textCutHardFail: false,
+    },
+    OBJECT_PRODUCT_DEMO: {
+      defaultStrategy: 'OBJECT_FIRST' as const,
+      defaultScale: 'MEDIUM_FOCUS' as const,
+      mediumIsDefault: true,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: false,
+      textCutHardFail: false,
+    },
+    GAMEPLAY: {
+      defaultStrategy: 'ACTION_FIRST' as const,
+      defaultScale: 'WIDE_CONTEXT' as const,
+      mediumIsDefault: false,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: false,
+      textCutHardFail: false,
+    },
+    SLIDES_PRESENTATION: {
+      defaultStrategy: 'SLIDE_FIRST' as const,
+      defaultScale: 'WIDE_CONTEXT' as const,
+      mediumIsDefault: false,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: true,
+      textCutHardFail: true,
+    },
+    MIXED: {
+      defaultStrategy: 'CASE_BY_CASE' as const,
+      defaultScale: null,
+      mediumIsDefault: false,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: false,
+      textCutHardFail: true,
+    },
+    UNKNOWN: {
+      defaultStrategy: 'WIDE_FIRST' as const,
+      defaultScale: null,
+      mediumIsDefault: false,
+      detailRequiresEvidence: true,
+      reframeRequiresPositiveEvidence: true,
+      keepCurrentIsLegal: true,
+      shotQuotaForbidden: true,
+      wholeUiIsPositiveEvidence: false,
+      textCutHardFail: true,
+    },
+  },
+} as const;
+
+export function policyFor(type: SourceVisualTypeV1) {
+  return SOURCE_TYPE_EDITORIAL_POLICY.byType[type];
+}

@@ -14,6 +14,9 @@ export const DEV_DATABASE_URL =
   "postgresql://acf:acf@localhost:5432/acf_dev?schema=public";
 export const TEST_DATABASE_URL =
   "postgresql://acf:acf@localhost:5432/acf_test?schema=public";
+/** Windows persistent local cluster (db:local:*). Never point tests at acf_dev. */
+export const LOCAL_WINDOWS_TEST_DATABASE_URL =
+  "postgresql://acf:acf@127.0.0.1:55432/acf_test?schema=public";
 
 type EmbeddedHandle = {
   stop: () => Promise<void>;
@@ -108,22 +111,114 @@ async function startEmbeddedPostgres(): Promise<string> {
   return `postgresql://acf:acf@127.0.0.1:${port}/acf_test?schema=public`;
 }
 
-export async function startTestDatabase(): Promise<string> {
-  if (process.env.DATABASE_URL) {
-    try {
-      const normalized = process.env.DATABASE_URL.replace(/^postgresql:/i, 'http:');
-      const parsed = new URL(normalized);
-      const host = parsed.hostname || '127.0.0.1';
-      const port = Number(parsed.port || 5432);
-      if (await canConnect(host, port)) {
-        return process.env.DATABASE_URL;
+function isPrismaProtocol(url: string): boolean {
+  return /^prisma(\+postgres)?:\/\//i.test(url.trim());
+}
+
+function parsePostgresUrl(raw: string): URL | undefined {
+  if (!raw.trim() || isPrismaProtocol(raw)) {
+    return undefined;
+  }
+  try {
+    return new URL(raw.trim().replace(/^postgresql:/i, "http:"));
+  } catch {
+    return undefined;
+  }
+}
+
+function postgresUrlForDatabase(source: URL, database: string): string {
+  const host = source.hostname === "localhost" ? "127.0.0.1" : source.hostname;
+  const port = source.port || "5432";
+  const user = decodeURIComponent(source.username);
+  const password = decodeURIComponent(source.password);
+  const auth = user ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}@` : "";
+  const search = source.search || "?schema=public";
+  return `postgresql://${auth}${host}:${port}/${database}${search}`;
+}
+
+function ensureDatabaseExists(adminSource: URL, databaseName: string): void {
+  const host = adminSource.hostname === "localhost" ? "127.0.0.1" : adminSource.hostname;
+  const port = adminSource.port || "5432";
+  const user = decodeURIComponent(adminSource.username) || "acf";
+  const password = decodeURIComponent(adminSource.password);
+  const env = {
+    ...process.env,
+    ACF_PG_HOST: host,
+    ACF_PG_PORT: String(port),
+    ACF_PG_USER: user,
+    ACF_PG_PASSWORD: password,
+    ACF_ENSURE_DB: databaseName,
+  };
+  const code = `
+    const {Client}=require('pg');
+    const db=process.env.ACF_ENSURE_DB;
+    if (!/^[a-z_][a-z0-9_]*$/.test(db||'')) process.exit(2);
+    const base={host:process.env.ACF_PG_HOST,port:Number(process.env.ACF_PG_PORT),user:process.env.ACF_PG_USER,password:process.env.ACF_PG_PASSWORD};
+    async function withMaint(maint){
+      const c=new Client({...base,database:maint});
+      await c.connect();
+      try {
+        const found=await c.query('SELECT 1 FROM pg_database WHERE datname=$1',[db]);
+        if (!found.rowCount) {
+          await c.query('CREATE DATABASE '+db+" OWNER acf ENCODING 'UTF8'");
+        }
+      } finally { await c.end(); }
+    }
+    (async()=>{
+      for (const maint of ['postgres','acf_dev']) {
+        try { await withMaint(maint); process.exit(0); }
+        catch (e) { /* try next */ }
       }
-    } catch {
-      // fall through to discovery
+      process.exit(1);
+    })();
+  `;
+  try {
+    execFileSync(process.execPath, ["-e", code], { cwd: repoRoot, env, stdio: "pipe" });
+  } catch {
+    throw new Error("Unable to inspect local PostgreSQL databases for test setup");
+  }
+}
+
+async function resolveReachableTestUrl(candidate: string): Promise<string | undefined> {
+  const parsed = parsePostgresUrl(candidate);
+  if (!parsed) {
+    return undefined;
+  }
+  const host = parsed.hostname === "localhost" ? "127.0.0.1" : parsed.hostname;
+  const port = Number(parsed.port || 5432);
+  if (!(await canConnect(host, port))) {
+    return undefined;
+  }
+  const testUrl = postgresUrlForDatabase(parsed, "acf_test");
+  const testParsed = parsePostgresUrl(testUrl);
+  if (!testParsed) {
+    return undefined;
+  }
+  ensureDatabaseExists(testParsed, "acf_test");
+  return testUrl;
+}
+
+export async function startTestDatabase(): Promise<string> {
+  const fromEnv = process.env.DATABASE_URL?.trim();
+  if (fromEnv && !isPrismaProtocol(fromEnv)) {
+    const resolved = await resolveReachableTestUrl(fromEnv);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  if (await canConnect("127.0.0.1", 55432)) {
+    const resolved = await resolveReachableTestUrl(LOCAL_WINDOWS_TEST_DATABASE_URL);
+    if (resolved) {
+      return resolved;
     }
   }
 
   if (await canConnect("127.0.0.1", 5432)) {
+    const resolved = await resolveReachableTestUrl(TEST_DATABASE_URL);
+    if (resolved) {
+      return resolved;
+    }
     return TEST_DATABASE_URL;
   }
 
@@ -152,7 +247,7 @@ export function migrateDeploy(databaseUrl: string): void {
 
 export async function rebuildSchemaAsync(databaseUrl: string): Promise<void> {
   const wipe = new PrismaClient({
-    datasources: { db: { url: databaseUrl } },
+    datasourceUrl: databaseUrl,
   });
   try {
     await wipe.$executeRawUnsafe("DROP SCHEMA IF EXISTS public CASCADE");
@@ -166,7 +261,7 @@ export async function rebuildSchemaAsync(databaseUrl: string): Promise<void> {
 export function getPrisma(databaseUrl: string): PrismaClient {
   if (!prisma) {
     prisma = new PrismaClient({
-      datasources: { db: { url: databaseUrl } },
+      datasourceUrl: databaseUrl,
     });
   }
   return prisma;

@@ -17,6 +17,8 @@ describe('script.generation compact context (12.12P)', () => {
     });
     expect(ctx.planTitle).toBeTruthy();
     expect(ctx.topics.length).toBe(topics.length);
+    expect(ctx.batchSize).toBe(topics.length);
+    expect(ctx.topics.every((t) => typeof t.itemIndex === 'number' && t.itemIndex >= 1)).toBe(true);
     expect(ctx.topics.some((t) => t.role === 'CURRENT')).toBe(true);
     expect(JSON.stringify(ctx)).not.toMatch(/00000000-0000-4000-8000/);
     expect(ctx.topics.every((t) => !('id' in t))).toBe(true);
@@ -70,6 +72,7 @@ describe('script.generation compact context (12.12P)', () => {
       contentMix: [{ type: '认知纠偏', purpose: '建立信任' }],
     });
     expect(strategy?.primaryObjective).toBe('验证职场成长');
+    expect(strategy?.goalCode).toBe('FOLLOW_GROWTH');
     expect(strategy?.contentDirections?.[0]).toContain('认知纠偏');
   });
 });

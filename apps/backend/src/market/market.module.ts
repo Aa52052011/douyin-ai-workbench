@@ -13,10 +13,20 @@ import { MarketResearchService } from './market-research.service.js';
 import { ProductBriefsController } from './product-briefs.controller.js';
 import { ProductBriefsService } from './product-briefs.service.js';
 import { MARKET_DATA_PROVIDER_REGISTRY } from './market-provider.types.js';
+import { ReferenceContentsController } from './reference-contents.controller.js';
+import { ReferenceContentsService } from './reference-contents.service.js';
+import { ReferenceIntelligenceService } from './reference-intelligence.service.js';
+import { AccountMemoryModule } from '../memory/account-memory.module.js';
+import { ResearchModule } from '../research/research.module.js';
 
 @Module({
-  imports: [AuthModule, AuthzModule, AgentsModule],
-  controllers: [ProductBriefsController, MarketResearchController, MarketImportController],
+  imports: [AuthModule, AuthzModule, AgentsModule, AccountMemoryModule, ResearchModule],
+  controllers: [
+    ProductBriefsController,
+    MarketResearchController,
+    MarketImportController,
+    ReferenceContentsController,
+  ],
   providers: [
     ProductBriefsService,
     MarketResearchService,
@@ -24,6 +34,8 @@ import { MARKET_DATA_PROVIDER_REGISTRY } from './market-provider.types.js';
     MarketInsightsService,
     MarketImportPreviewService,
     MarketImportConfirmService,
+    ReferenceContentsService,
+    ReferenceIntelligenceService,
     MarketDataProviderRegistry,
     {
       provide: MARKET_DATA_PROVIDER_REGISTRY,
@@ -34,6 +46,8 @@ import { MARKET_DATA_PROVIDER_REGISTRY } from './market-provider.types.js';
     ProductBriefsService,
     MarketResearchService,
     MarketInsightsService,
+    ReferenceContentsService,
+    ReferenceIntelligenceService,
     MarketDataProviderRegistry,
     MARKET_DATA_PROVIDER_REGISTRY,
   ],

@@ -5,6 +5,11 @@ import { api } from "../lib/api";
 import { projectPlatformApiValue, projectPlatformSelectValue, type ProjectPlatformId } from "../lib/project-platform";
 import type { Project } from "../lib/types";
 import { ProjectPlatformSelect } from "./project-platform-select";
+import { Button } from "./ui/button";
+import { Dialog } from "./ui/dialog";
+import { FormField } from "./ui/form-field";
+import { Input, Textarea } from "./ui/input";
+import { toProductError } from "../lib/ux/product-error";
 
 export function EditProjectPanel({
   project,
@@ -42,69 +47,48 @@ export function EditProjectPanel({
       onSaved(saved);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(toProductError(err, "没能保存项目").humanMessage);
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-      <form
-        className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-xl bg-white p-5 shadow-lg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-project-title"
-        onSubmit={(event) => void onSubmit(event)}
-      >
-        <h2 id="edit-project-title" className="text-lg font-medium">
-          编辑项目
-        </h2>
-        <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-name">
-            项目名称
-          </label>
-          <input
+    <Dialog open title="编辑项目" onClose={onClose} description="修改名称、平台和说明。">
+      <form className="space-y-3" onSubmit={(event) => void onSubmit(event)}>
+        <FormField label="项目名称" htmlFor="edit-project-name" required>
+          <Input
             id="edit-project-name"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
           />
-        </div>
+        </FormField>
         <ProjectPlatformSelect id="edit-project-platform" value={platform} onChange={setPlatform} required />
-        <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-industry">
-            行业
-          </label>
-          <input
+        <FormField label="行业" htmlFor="edit-project-industry" optional>
+          <Input
             id="edit-project-industry"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
             value={industry}
             onChange={(event) => setIndustry(event.target.value)}
           />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="edit-project-description">
-            描述
-          </label>
-          <textarea
+        </FormField>
+        <FormField label="描述" htmlFor="edit-project-description" optional>
+          <Textarea
             id="edit-project-description"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-        </div>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        </FormField>
+        {error ? <p className="text-sm text-[var(--acf-danger)]">{error}</p> : null}
         <div className="flex justify-end gap-2">
-          <button className="rounded-md border px-3 py-2 text-sm" type="button" onClick={onClose}>
+          <Button variant="secondary" type="button" onClick={onClose}>
             取消
-          </button>
-          <button className="rounded-md bg-neutral-950 px-3 py-2 text-sm text-white" disabled={pending} type="submit">
-            {pending ? "保存中…" : "保存"}
-          </button>
+          </Button>
+          <Button type="submit" loading={pending}>
+            保存
+          </Button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

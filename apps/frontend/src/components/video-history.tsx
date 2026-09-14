@@ -21,6 +21,7 @@ export function VideoHistory({
             className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-3"
           >
             <div className="min-w-0 text-sm">
+              <p className="acf-caption">{item.versionLabel || "版本"}</p>
               <p className="break-words font-medium">{item.title}</p>
               <p className="text-neutral-500">
                 {[item.createdAtLabel, item.statusLabel, item.durationLabel].filter(Boolean).join(" · ")}

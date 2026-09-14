@@ -1,3 +1,4 @@
+import { normalizeBusinessGoal } from '../common/business-goal.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { PRODUCT_BRIEF_LIMITS } from './market.constants.js';
 import type { ProductBriefPayload } from './market.types.js';
@@ -68,10 +69,14 @@ export function parseProductBriefPayload(input: unknown): ProductBriefPayload {
   if (!isRecord(input)) {
     throw new AppError(ErrorCode.VALIDATION_ERROR, 'Product brief payload is invalid');
   }
+  const businessGoal = requiredString(input, 'businessGoal', PRODUCT_BRIEF_LIMITS.businessGoal);
+  const rawGoalCode = optionalString(input, 'goalCode', 32);
+  const normalized = normalizeBusinessGoal({ businessGoal, goalCode: rawGoalCode });
   const payload: ProductBriefPayload = {
     productName: requiredString(input, 'productName', PRODUCT_BRIEF_LIMITS.productName),
     industry: requiredString(input, 'industry', PRODUCT_BRIEF_LIMITS.industry),
-    businessGoal: requiredString(input, 'businessGoal', PRODUCT_BRIEF_LIMITS.businessGoal),
+    businessGoal,
+    goalCode: normalized.goalCode,
   };
   const category = optionalString(input, 'category', PRODUCT_BRIEF_LIMITS.category);
   const brand = optionalString(input, 'brand', PRODUCT_BRIEF_LIMITS.brand);

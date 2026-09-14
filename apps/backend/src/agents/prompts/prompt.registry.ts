@@ -8,6 +8,9 @@ import { contentPlanningPromptV1 } from './content-planning.prompt.js';
 import { marketIntelligencePromptV1 } from './market-intelligence.prompt.js';
 import { marketIntakePromptV1 } from './market-intake.prompt.js';
 import { productIntakePromptV1 } from './product-intake.prompt.js';
+import { performanceAnalysisPromptV1 } from './performance-analysis.prompt.js';
+import { productionQualityPromptV1 } from './production-quality.prompt.js';
+import { referenceAnalysisPromptV1 } from './reference-analysis.prompt.js';
 import { scriptGenerationPromptV1 } from './script-generation.prompt.js';
 import type { PromptTemplate, RenderedPrompt } from './prompt.types.js';
 
@@ -29,6 +32,9 @@ export class PromptRegistry {
     this.register(campaignStrategyPromptV1);
     this.register(productIntakePromptV1);
     this.register(marketIntakePromptV1);
+    this.register(referenceAnalysisPromptV1);
+    this.register(productionQualityPromptV1);
+    this.register(performanceAnalysisPromptV1);
   }
 
   register(template: PromptTemplate): void {

@@ -1,3 +1,10 @@
+import type { MarketSourceDraftEntry } from "./market-source";
+import {
+  isMarketSourceRole,
+  isMarketSourceType,
+  type MarketSourceProvenance,
+} from "./market-source";
+
 /** Draft-level provenance for Market Intake (12.12E/F). */
 export type MarketIntakeProvenance =
   | "USER_PROVIDED"
@@ -23,6 +30,7 @@ export type MarketLinkDraft = {
 /**
  * Frontend draft for Guided Market Intake.
  * Maps to MANUAL MarketResearch items on confirm — not MarketInsight.
+ * Step 13.4: sources[] is provenance SoT; keywords/competitors remain convenience fields.
  */
 export type MarketIntakeDraft = {
   keywords: string[];
@@ -36,6 +44,9 @@ export type MarketIntakeDraft = {
   marketHypotheses: string[];
   /** Display-only / future; import stays parallel path in V1. */
   uploadedSources: string[];
+  /** Step 13.4 structured sources (excludes PRODUCTION_ASSET after handoff). */
+  sources: MarketSourceDraftEntry[];
+  researchRequested: boolean;
   userAcknowledgedLimitedData: boolean;
 };
 
@@ -92,5 +103,44 @@ export type MarketIntakeDraftPatch = Partial<
     | "commonPainPoints"
     | "commonSellingPoints"
     | "marketHypotheses"
+    | "sources"
+    | "researchRequested"
   >
 >;
+
+export function normalizeMarketSourceEntries(raw: unknown): MarketSourceDraftEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: MarketSourceDraftEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (!isMarketSourceRole(row.role) || !isMarketSourceType(row.sourceType)) continue;
+    if (typeof row.id !== "string" || !row.id.trim()) continue;
+    const provenance = (
+      typeof row.provenance === "string" ? row.provenance : "USER_PROVIDED"
+    ) as MarketSourceProvenance;
+    out.push({
+      id: row.id.trim(),
+      role: row.role,
+      sourceType: row.sourceType,
+      provenance: (["USER_PROVIDED", "SYSTEM_DISCOVERED", "PLATFORM_API", "UPLOADED", "MANUAL"] as string[]).includes(
+        provenance,
+      )
+        ? provenance
+        : "USER_PROVIDED",
+      capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : new Date().toISOString(),
+      ...(typeof row.platform === "string" ? { platform: row.platform } : {}),
+      ...(typeof row.title === "string" ? { title: row.title } : {}),
+      ...(typeof row.text === "string" ? { text: row.text } : {}),
+      ...(typeof row.url === "string" ? { url: row.url } : {}),
+      ...(typeof row.canonicalUrl === "string" ? { canonicalUrl: row.canonicalUrl } : {}),
+      ...(typeof row.assetId === "string" ? { assetId: row.assetId } : {}),
+      ...(typeof row.competitorName === "string" ? { competitorName: row.competitorName } : {}),
+      ...(typeof row.keyword === "string" ? { keyword: row.keyword } : {}),
+      ...(typeof row.label === "string" ? { label: row.label } : {}),
+      ...(typeof row.userNote === "string" ? { userNote: row.userNote } : {}),
+      ...(typeof row.reasonForReference === "string" ? { reasonForReference: row.reasonForReference } : {}),
+    });
+  }
+  return out;
+}

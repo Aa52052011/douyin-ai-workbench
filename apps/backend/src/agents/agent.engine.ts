@@ -5,13 +5,14 @@ import { AgentError, isRetryableError, toAgentError } from './agent.errors.js';
 import { AgentRunLogger } from './agent.logger.js';
 import { AgentRegistry } from './agent.registry.js';
 import { toPublicAgentRun } from './agent.run-mapper.js';
+import { AGENT_EXECUTOR, type AgentExecutor } from './executors/agent.executor.js';
 import type {
   AgentContext,
   AgentDefinition,
   AgentRunPublic,
   InternalAgentRequest,
 } from './agent.types.js';
-import { AGENT_EXECUTOR, type AgentExecutor } from './executors/agent.executor.js';
+import { runMeteringScope } from '../usage/metering-context.js';
 
 export type ExecuteParams = {
   definition: AgentDefinition;
@@ -67,7 +68,17 @@ export class AgentEngine {
     };
 
     try {
-      const result = await this.executor.execute(request, definition.timeoutMs);
+      const result = await runMeteringScope(
+        {
+          tenantId: context.tenantId,
+          workspaceId: context.workspaceId,
+          projectId: context.projectId,
+          userId: context.userId,
+          agentRunId: created.id,
+          stage: 'AGENT',
+        },
+        () => this.executor.execute(request, definition.timeoutMs),
+      );
       if (result.status === 'FAILED') {
         throw new AgentError(
           ErrorCode.AGENT_EXECUTION_FAILED,

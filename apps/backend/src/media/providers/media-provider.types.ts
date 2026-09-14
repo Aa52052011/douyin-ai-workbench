@@ -85,6 +85,10 @@ export type ComposeSceneInput = {
   storageKey: string;
   durationBudget: number;
   mimeType?: string;
+  kind?: 'image' | 'video';
+  sourceStartSec?: number;
+  freezePadSec?: number;
+  cropTopRatio?: number;
 };
 
 export type ComposeRequest = {

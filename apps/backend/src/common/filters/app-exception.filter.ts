@@ -56,9 +56,23 @@ export class AppExceptionFilter implements ExceptionFilter {
         });
         return;
       }
+      if (status === HttpStatus.NOT_FOUND) {
+        response.status(status).json({
+          code: 'NOT_FOUND',
+          message: typeof raw === 'string' ? raw : 'Not found',
+        });
+        return;
+      }
+      if (status === HttpStatus.FORBIDDEN) {
+        response.status(status).json({
+          code: ErrorCode.WORKSPACE_FORBIDDEN,
+          message: typeof raw === 'string' ? raw : 'Forbidden',
+        });
+        return;
+      }
       const message = typeof raw === 'string' ? raw : 'Request failed';
       response.status(status).json({
-        code: ErrorCode.AUTH_UNAUTHORIZED,
+        code: 'HTTP_ERROR',
         message,
       });
       return;

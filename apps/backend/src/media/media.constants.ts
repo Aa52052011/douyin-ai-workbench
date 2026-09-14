@@ -1,6 +1,28 @@
 export const LOCAL_STORAGE_PROVIDER_ID = 'local';
 
-export const MEDIA_MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+function resolveMaxUploadBytes(): number {
+  const raw = process.env.MEDIA_MAX_UPLOAD_BYTES?.trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (n >= 1024 * 1024 && n <= 512 * 1024 * 1024) return n;
+  }
+  return 128 * 1024 * 1024;
+}
+
+export const MEDIA_MAX_UPLOAD_BYTES = resolveMaxUploadBytes();
+
+/** Maps browser-empty or octet-stream MP4 names onto the V1 allowlist. */
+export function normalizeLibraryMime(mimeType: string | undefined, filename?: string): string {
+  const mime = (mimeType ?? '').trim().toLowerCase();
+  if (ASSET_MIME_ALLOWLIST.has(mime)) {
+    return mime;
+  }
+  const name = (filename ?? '').toLowerCase();
+  if (name.endsWith('.mp4') && (mime === '' || mime === 'application/octet-stream')) {
+    return 'video/mp4';
+  }
+  return mime;
+}
 
 export const ASSET_MIME_ALLOWLIST = new Map<string, { type: string; extensions: string[] }>([
   ['image/png', { type: 'IMAGE', extensions: ['.png'] }],

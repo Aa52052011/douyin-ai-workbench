@@ -22,9 +22,14 @@ import {
   PRODUCT_INTAKE_AGENT_ID,
   PRODUCT_INTAKE_AGENT_VERSION,
   PRODUCT_INTAKE_PROMPT,
+  REFERENCE_ANALYSIS_AGENT_ID,
+  REFERENCE_ANALYSIS_AGENT_VERSION,
+  REFERENCE_ANALYSIS_PROMPT,
   SCRIPT_GENERATION_AGENT_ID,
   SCRIPT_GENERATION_AGENT_VERSION,
   SCRIPT_GENERATION_PROMPT,
+  PERFORMANCE_ANALYSIS_AGENT_ID,
+  PERFORMANCE_ANALYSIS_AGENT_VERSION,
   ECHO_AGENT_ID,
   ECHO_AGENT_VERSION,
   type AgentDefinition,
@@ -79,6 +84,11 @@ import {
   compactMarketIntakeDraft,
   getMarketIntakeQuestionPlan,
 } from '../definitions/market-intake-question-plan.js';
+import {
+  parseAndValidateReferenceAnalysisModelText,
+  parseReferenceAnalysisInput,
+} from '../definitions/reference-analysis.agent.js';
+import { runDeterministicPerformanceAnalysis, type PerformanceAnalysisInputV1 } from '../../performance-analysis/performance-analysis.engine.js';
 import { ModelRouter } from '../models/model.router.js';
 import { PromptRegistry } from '../prompts/prompt.registry.js';
 import { ToolRegistry } from '../tools/tool.registry.js';
@@ -99,7 +109,7 @@ export class InProcessAgentExecutor implements AgentExecutor {
   ) {}
 
   async execute(request: InternalAgentRequest, timeoutMs: number): Promise<InternalAgentResponse> {
-    return runWithTimeout(this.run(request), timeoutMs);
+    return runWithTimeout(() => this.run(request), timeoutMs);
   }
 
   private async run(request: InternalAgentRequest): Promise<InternalAgentResponse> {
@@ -148,6 +158,18 @@ export class InProcessAgentExecutor implements AgentExecutor {
       definition.version === MARKET_INTAKE_AGENT_VERSION
     ) {
       return this.runMarketIntake(request, definition);
+    }
+    if (
+      definition.id === REFERENCE_ANALYSIS_AGENT_ID &&
+      definition.version === REFERENCE_ANALYSIS_AGENT_VERSION
+    ) {
+      return this.runReferenceAnalysis(request, definition);
+    }
+    if (
+      definition.id === PERFORMANCE_ANALYSIS_AGENT_ID &&
+      definition.version === PERFORMANCE_ANALYSIS_AGENT_VERSION
+    ) {
+      return this.runPerformanceAnalysis(request, definition);
     }
     throw new AgentError(ErrorCode.AGENT_NOT_FOUND);
   }
@@ -345,6 +367,8 @@ export class InProcessAgentExecutor implements AgentExecutor {
       contentPlanContext: JSON.stringify(parsed.contentPlanContext ?? {}),
       previousScriptSummaries: JSON.stringify(parsed.previousScriptSummaries ?? []),
       strategyContext: JSON.stringify(parsed.strategyContext ?? {}),
+      accountMemoryContext: JSON.stringify(parsed.accountMemoryContext ?? {}),
+      referenceContext: JSON.stringify(parsed.referenceContext ?? {}),
       topic: JSON.stringify(parsed.topic),
       positioning: JSON.stringify(parsed.positioning),
     });
@@ -796,6 +820,130 @@ export class InProcessAgentExecutor implements AgentExecutor {
       status: 'COMPLETED',
       output: output as unknown as JsonObject,
       usage: model.usage,
+    };
+  }
+
+  private async runReferenceAnalysis(
+    request: InternalAgentRequest,
+    definition: AgentDefinition,
+  ): Promise<InternalAgentResponse> {
+    const parsed = parseReferenceAnalysisInput(request.input);
+    const sourceText = [
+      parsed.title,
+      parsed.userNote,
+      parsed.reasonForReference,
+      parsed.availableText,
+      parsed.availableTranscript,
+      parsed.availableDescription,
+    ]
+      .filter((x): x is string => Boolean(x && x.trim()))
+      .join('\n');
+    const prompt = this.prompts.render(REFERENCE_ANALYSIS_PROMPT, REFERENCE_ANALYSIS_AGENT_VERSION, {
+      referenceContentId: parsed.referenceContentId,
+      platform: parsed.platform ?? '',
+      sourceType: parsed.sourceType,
+      title: parsed.title ?? '',
+      reasonForReference: parsed.reasonForReference ?? '',
+      userNote: parsed.userNote ?? '',
+      availableText: parsed.availableText ?? '',
+      availableTranscript: parsed.availableTranscript ?? '',
+      availableDescription: parsed.availableDescription ?? '',
+      assetMetadata: JSON.stringify(parsed.assetMetadata ?? {}),
+    });
+    const promptMeta = payloadFingerprint({
+      system: prompt.systemPrompt,
+      user: prompt.userPrompt,
+    });
+
+    const generateOnce = (userPrompt: string) =>
+      this.models.generate({
+        agentId: definition.id,
+        tenantId: request.context.tenantId,
+        task: definition.id,
+        model: definition.defaultModel,
+        temperature: definition.temperature,
+        maxTokens: definition.maxTokens,
+        timeoutMs: definition.timeoutMs,
+        responseFormat: 'json',
+        systemPrompt: prompt.systemPrompt,
+        prompt: userPrompt,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+
+    let model = await generateOnce(prompt.userPrompt);
+    this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
+    let responseMeta = payloadFingerprint(model.text);
+    let output;
+    try {
+      output = parseAndValidateReferenceAnalysisModelText(model.text, sourceText);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== ErrorCode.AGENT_INVALID_OUTPUT) {
+        throw error;
+      }
+      const repairPrompt = `${prompt.userPrompt}
+
+上次输出未通过 schema 校验。请重新输出：仅一个 JSON 对象；不要 exactTitle/exactScript 等复制字段；不要 markdown。`;
+      const repaired = await generateOnce(repairPrompt);
+      model = {
+        ...repaired,
+        usage: {
+          inputTokens: (model.usage.inputTokens ?? 0) + (repaired.usage.inputTokens ?? 0),
+          outputTokens: (model.usage.outputTokens ?? 0) + (repaired.usage.outputTokens ?? 0),
+          totalTokens: (model.usage.totalTokens ?? 0) + (repaired.usage.totalTokens ?? 0),
+          estimatedCost:
+            model.usage.estimatedCost == null && repaired.usage.estimatedCost == null
+              ? null
+              : (model.usage.estimatedCost ?? 0) + (repaired.usage.estimatedCost ?? 0),
+        },
+      };
+      responseMeta = payloadFingerprint(model.text);
+      output = parseAndValidateReferenceAnalysisModelText(model.text, sourceText);
+    }
+
+    this.logger.log({
+      requestId: request.requestId,
+      agent: definition.id,
+      version: definition.version,
+      status: 'COMPLETED',
+      promptHash: promptMeta.hash,
+      promptLength: promptMeta.length,
+      responseHash: responseMeta.hash,
+      responseLength: responseMeta.length,
+      inputTokens: model.usage.inputTokens ?? undefined,
+      outputTokens: model.usage.outputTokens ?? undefined,
+      totalTokens: model.usage.totalTokens ?? undefined,
+    });
+
+    return {
+      status: 'COMPLETED',
+      output: output as unknown as JsonObject,
+      usage: model.usage,
+    };
+  }
+
+  private async runPerformanceAnalysis(
+    request: InternalAgentRequest,
+    definition: AgentDefinition,
+  ): Promise<InternalAgentResponse> {
+    const input = request.input as PerformanceAnalysisInputV1;
+    const result = runDeterministicPerformanceAnalysis(input);
+    this.logger.log({
+      requestId: request.requestId,
+      agent: definition.id,
+      version: definition.version,
+      status: 'COMPLETED',
+      promptHash: 'none',
+      promptLength: 0,
+      responseHash: 'deterministic-mock',
+      responseLength: 0,
+    });
+    return {
+      status: 'COMPLETED',
+      output: result as unknown as JsonObject,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: null },
     };
   }
 }

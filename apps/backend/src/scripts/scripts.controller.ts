@@ -80,8 +80,9 @@ export class ScriptsController {
     @CurrentUser() auth: AuthContext,
     @Param('id') id: string,
     @Headers('x-workspace-id') workspaceHint?: string,
+    @Headers('x-approval-source') approvalSource?: string,
   ) {
-    return this.scripts.confirm(auth, id, workspaceHint);
+    return this.scripts.confirm(auth, id, workspaceHint, { approvalSource });
   }
 
   @Post(':id/archive')

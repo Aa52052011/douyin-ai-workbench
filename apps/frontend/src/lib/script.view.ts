@@ -34,7 +34,7 @@ export function formatScriptTime(value?: string): string {
 export function scriptStatusLabel(status?: string): string {
   switch (status) {
     case "DRAFT":
-      return "草稿";
+      return "等待审核";
     case "CONFIRMED":
       return "已确认";
     case "ARCHIVED":
@@ -220,7 +220,7 @@ export function planOptionLabel(plan: ContentPlanRecord): string {
 export function topicOptionLabel(topic: ContentTopicRecord | { title?: string; dayIndex?: number; contentPillar?: string; contentAngle?: string; priority?: string; priorityLabel?: string }): string {
   return [
     topic.title,
-    typeof topic.dayIndex === "number" ? `第 ${topic.dayIndex} 天` : "",
+    typeof topic.dayIndex === "number" ? `第 ${topic.dayIndex} 条` : "",
     topic.contentPillar,
     topic.contentAngle,
     ("priorityLabel" in topic && topic.priorityLabel) || priorityLabel("priority" in topic ? topic.priority : undefined),

@@ -3,12 +3,21 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ContextualGuidanceV1 } from "../../../../components/contextual-guidance-v1";
+import { LearningSummaryCard } from "../../../../components/learning-summary-card";
+import { NextActionCard } from "../../../../components/next-action-card";
 import { PageHeader } from "../../../../components/page-header";
+import { ContextReuseSummary } from "../../../../components/publication-data-hub";
 import { StageChecklist } from "../../../../components/stage-checklist";
+import { WorkflowProgress } from "../../../../components/workflow-progress";
+import { Card } from "../../../../components/ui/card";
+import { Skeleton } from "../../../../components/ui/feedback";
 import { isNotFoundError } from "../../../../lib/api";
 import { useAuth } from "../../../../lib/auth-context";
 import { loadProjectStatus, type ProjectStatusSnapshot } from "../../../../lib/load-project-status";
-import { fullLoopCtaNote, groupProgress, stageCountLabel } from "../../../../lib/project-next-action";
+import { getLearningSummary, type LearningPublicView } from "../../../../lib/research.api";
+import { resolveNextActionV2 } from "../../../../lib/ux/next-action-v2";
+import { resolveWorkflowStagesV2, workflowCurrentLabel } from "../../../../lib/ux/workflow-stages";
 import { useProjectWorkspace } from "../../../../lib/project-workspace-context";
 import { projectPlatformLabel } from "../../../../lib/project-platform";
 import { withIntakeDraftNextAction } from "../../../../lib/with-intake-draft-next-action";
@@ -18,22 +27,34 @@ export default function ProjectOverviewPage() {
   const { project } = useProjectWorkspace();
   const { accessToken } = useAuth();
   const [snapshot, setSnapshot] = useState<ProjectStatusSnapshot | null>(null);
+  const [learning, setLearning] = useState<LearningPublicView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!accessToken || !projectId) {
-      return;
-    }
+    if (!accessToken || !projectId) return;
     let cancelled = false;
+    setSnapshot(null);
+    setLearning(null);
     void loadProjectStatus(accessToken, projectId)
       .then((data) => {
-        if (!cancelled) {
-          setSnapshot(withIntakeDraftNextAction(projectId, data));
-        }
+        if (!cancelled) setSnapshot(withIntakeDraftNextAction(projectId, data));
       })
       .catch((err: Error) => {
+        if (!cancelled) setError(isNotFoundError(err) ? "项目不存在或你没有访问权限" : err.message);
+      });
+    void getLearningSummary(accessToken, projectId)
+      .then((data) => {
+        if (!cancelled) setLearning(data);
+      })
+      .catch(() => {
         if (!cancelled) {
-          setError(isNotFoundError(err) ? "项目不存在或你没有访问权限" : err.message);
+          setLearning({
+            statusLabel: "数据不足，系统正在积累",
+            summary: [],
+            nextBatchAdjustments: [],
+            dataSufficiency: "INSUFFICIENT_DATA",
+            lastUpdatedAt: new Date().toISOString(),
+          });
         }
       });
     return () => {
@@ -44,78 +65,74 @@ export default function ProjectOverviewPage() {
   if (error) {
     return (
       <p className="text-sm text-red-600" role="alert">
-        {error}
+        无法加载项目概览。请刷新重试，已填写的信息不会丢失。
       </p>
     );
   }
   if (!snapshot) {
-    return <p className="text-sm text-neutral-600">正在整理项目进度…</p>;
+    return <Skeleton className="h-28 w-full" />;
   }
 
-  const groups = groupProgress(snapshot.stages);
+  const next = resolveNextActionV2(projectId, snapshot.facts);
+  const stages = resolveWorkflowStagesV2(projectId, snapshot.facts);
   const platformLabel = projectPlatformLabel(project.platform);
-  const meta = [project.industry ? `行业：${project.industry}` : "", `目标平台：${platformLabel}`].filter(Boolean).join(" · ");
   const summary = snapshot.summary;
-  const summaryItems = [
-    summary.productName ? `当前产品：${summary.productName}` : "",
-    summary.positioningLine ? `当前定位：${summary.positioningLine}` : "",
-    summary.strategyObjective ? `推广目标：${summary.strategyObjective}` : "",
-    summary.planTitle ? `最新计划：${summary.planTitle}${summary.planStatus ? `（${summary.planStatus}）` : ""}` : "",
-    summary.scriptTitle ? `最新脚本：${summary.scriptTitle}${summary.scriptStatus ? `（${summary.scriptStatus}）` : ""}` : "",
-    summary.videoStatus ? `最新视频：${summary.videoStatus}` : "",
-    summary.publicationTitle ? `最近发布：${summary.publicationTitle}` : "",
-    summary.hasMetrics ? "已有表现数据" : "",
-  ].filter(Boolean);
 
   return (
     <div>
       <PageHeader
         title="项目概览"
-        description="这个项目现在做到哪一步，下一步该做什么。"
-        breadcrumb={`项目 / ${project.name} / 概览`}
+        description={`${workflowCurrentLabel(stages)} · 目标平台：${platformLabel}`}
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "概览" },
+        ]}
       />
 
-      <section className="mb-6 rounded-xl border border-neutral-200 bg-white p-4">
-        <p className="text-sm text-neutral-600">{meta}</p>
-        {project.description ? <p className="mt-2 text-sm">{project.description}</p> : null}
-        <p className="mt-3 text-sm text-neutral-700">{stageCountLabel(snapshot.stages)}</p>
-        <p className="mt-1 text-xs text-neutral-500">
-          {groups.map((group) => `${group.label} ${group.done}/${group.total}`).join(" · ")}
-        </p>
+      <ContextualGuidanceV1 id="dashboard" />
+
+      <NextActionCard action={next} />
+
+      <section className="mb-6">
+        <h2 className="acf-section-title mb-3">内容进度</h2>
+        <WorkflowProgress stages={stages} />
       </section>
 
+      <div className="mb-6">
+        <ContextReuseSummary
+          positioningLine={summary.positioningLine}
+          audience={summary.targetAudience}
+          style={summary.contentStyle}
+          platform={platformLabel}
+          duration={summary.recommendedLength}
+          editHref={`/dashboard/projects/${projectId}/positioning`}
+        />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-medium">阶段进度</h2>
-          <StageChecklist projectId={projectId} stages={snapshot.stages} />
-        </section>
+        <details className="rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
+          <summary className="cursor-pointer text-sm font-medium">详细资料进度</summary>
+          <div className="mt-3">
+            <StageChecklist projectId={projectId} stages={snapshot.stages} />
+          </div>
+        </details>
         <aside className="space-y-4">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4">
-            <h2 className="text-sm font-medium">下一步</h2>
-            <p className="mt-2 text-sm text-neutral-800">{snapshot.nextAction.label}</p>
-            {snapshot.nextAction.description ? (
-              <p className="mt-2 text-sm text-neutral-600">{snapshot.nextAction.description}</p>
-            ) : null}
-            {snapshot.nextAction.note ? (
-              <p className="mt-2 text-xs text-neutral-500">{snapshot.nextAction.note}</p>
-            ) : null}
-            {snapshot.nextAction.id === "next-plan" ? (
-              <p className="mt-2 text-xs text-neutral-500">{fullLoopCtaNote()}</p>
-            ) : null}
-            <Link
-              className="mt-4 inline-flex rounded-md bg-neutral-950 px-4 py-2 text-sm text-white"
-              href={snapshot.nextAction.href}
-            >
-              {snapshot.nextAction.ctaLabel ?? snapshot.nextAction.label}
+          <Card>
+            <h2 className="acf-section-title">最近内容</h2>
+            <p className="acf-body-secondary mt-2">{summary.planTitle ? `内容计划：${summary.planTitle}` : "还没有内容计划。"}</p>
+            <p className="acf-body-secondary mt-1">{summary.scriptTitle ? `最新脚本：${summary.scriptTitle}` : "还没有脚本。"}</p>
+            <p className="acf-body-secondary mt-1">{summary.videoStatus ? `成片：${summary.videoStatus}` : "还没有成片。"}</p>
+          </Card>
+          <Card>
+            <h2 className="acf-section-title">发布与数据</h2>
+            <p className="acf-body-secondary mt-2">{summary.publicationTitle ? `最近发布：${summary.publicationTitle}` : "完成成片后即可手动发布。"}</p>
+            <p className="acf-body-secondary mt-1">{summary.hasMetrics ? "已有表现数据，可开始AI复盘。" : "登记作品并录入数据后才会出现复盘。"}</p>
+            <Link className="mt-3 inline-block text-sm underline" href={`/dashboard/projects/${projectId}/publish`}>
+              打开发布与数据
             </Link>
-          </section>
-          {summaryItems.length > 0 ? (
-            <section className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
-              {summaryItems.map((item) => (
-                <p key={item}>{item}</p>
-              ))}
-            </section>
-          ) : null}
+          </Card>
+          <LearningSummaryCard learning={learning} />
         </aside>
       </div>
     </div>

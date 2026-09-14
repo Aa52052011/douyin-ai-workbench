@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { GLOBAL_NAV } from "../lib/global-nav";
 import { useAuth } from "../lib/auth-context";
+import { ProjectSwitcher } from "./project-switcher";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { session, logout } = useAuth();
@@ -16,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-neutral-50 text-neutral-950">
       <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white">
         <div className="mx-auto flex max-w-[100rem] items-center justify-between gap-4 px-3 py-3 md:px-4">
-          <div className="flex items-center gap-6">
+          <div className="flex min-w-0 items-center gap-6">
             <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
               AI Content Factory
             </Link>
@@ -27,6 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={active ? "page" : undefined}
                     className={`rounded-md px-3 py-1.5 text-sm ${active ? "bg-neutral-100 font-medium" : "text-neutral-600 hover:bg-neutral-50"}`}
                   >
                     {item.label}
@@ -36,12 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            <ProjectSwitcher />
             <span className="hidden text-neutral-600 sm:inline">{session?.user.name}</span>
-            <button
-              className="underline"
-              onClick={() => void logout().then(() => router.push("/login"))}
-              type="button"
-            >
+            <button className="underline" onClick={() => void logout().then(() => router.push("/login"))} type="button">
               退出
             </button>
             <button className="rounded-md border px-2 py-1 md:hidden" type="button" onClick={() => setOpen((value) => !value)}>

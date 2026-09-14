@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaClient } from '@prisma/client';
 import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { AccountMemoryService } from '../memory/account-memory.service.js';
 import type { ConfirmMetricsImportDto } from './dto/confirm-metrics-import.dto.js';
 import { fileImportIdempotencyKey } from './import/file-fingerprint.js';
 import { DOUYIN_EXPORT_MAPPING_VERSION } from './import/import-file.constants.js';
@@ -26,6 +28,7 @@ export class MetricsImportConfirmService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly ingestion: MetricsIngestionService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async confirm(
@@ -101,6 +104,16 @@ export class MetricsImportConfirmService {
           continue;
         }
         throw error;
+      }
+    }
+
+    const imported = results.some((row) => row.status === 'imported');
+    if (imported) {
+      try {
+        const memory = this.moduleRef.get(AccountMemoryService, { strict: false });
+        void memory.refreshMemorySafe(auth, dto.projectId, 'METRICS_UPDATED', workspaceHint);
+      } catch {
+        // Memory is derived — never fail metrics import.
       }
     }
 

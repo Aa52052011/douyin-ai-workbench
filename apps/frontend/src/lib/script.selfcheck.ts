@@ -148,13 +148,13 @@ function run() {
   const groups = topicSelectorGroups(plans[0]);
   assert.deepEqual(
     groups.map((item) => item.heading),
-    ["第 1 天", "第 2 天"],
+    ["第 1 条", "第 2 条"],
   );
   assert.equal(groups[0].topics[0]?.title, "敏感肌急救");
   assert.equal(groups[0].topics[0]?.id, "topic-a");
 
   // 7 Script status 中文
-  assert.equal(scriptStatusLabel("DRAFT"), "草稿");
+  assert.equal(scriptStatusLabel("DRAFT"), "等待审核");
   assert.equal(scriptStatusLabel("CONFIRMED"), "已确认");
   assert.equal(scriptStatusLabel("ARCHIVED"), "已归档");
   assert.equal(scriptStatusLabel("DRAFT").includes("DRAFT"), false);

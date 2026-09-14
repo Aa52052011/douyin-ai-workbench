@@ -117,7 +117,7 @@ export function groupTopicsByDay(topics: ContentTopicRecord[]): DayGroupView[] {
     .sort((a, b) => a[0] - b[0])
     .map(([dayIndex, items]) => ({
       dayIndex,
-      heading: `第 ${dayIndex} 天`,
+      heading: `第 ${dayIndex} 条`,
       topics: items,
     }));
 }

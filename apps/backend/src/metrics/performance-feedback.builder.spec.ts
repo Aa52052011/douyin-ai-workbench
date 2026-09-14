@@ -102,10 +102,12 @@ describe('buildPerformanceFeedback', () => {
     expect(result.positiveSignals).toEqual([]);
   });
 
-  it('keeps a single positive insight out of main signals', () => {
+  it('emits a candidate-ready positive signal from one publication', () => {
     const result = feedback([source('p1', 'SUFFICIENT', ['HIGH_SHARE_RATE'])]);
     expect(result.dataState).toBe('LIMITED');
-    expect(result.positiveSignals).toEqual([]);
+    expect(result.positiveSignals).toHaveLength(1);
+    expect(result.positiveSignals[0]?.code).toBe('HIGH_SHARE_RATE');
+    expect(result.positiveSignals[0]?.supportCount).toBe(1);
     expect(result.sampleSize).toBe(1);
   });
 

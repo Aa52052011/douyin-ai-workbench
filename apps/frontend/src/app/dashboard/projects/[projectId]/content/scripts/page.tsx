@@ -5,6 +5,10 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { EmptyState } from "../../../../../../components/empty-state";
 import { PageHeader } from "../../../../../../components/page-header";
+import { ProductionContextHeaderV3, WorkflowFooterV3 } from "../../../../../../components/production-context-header";
+import { AITaskState } from "../../../../../../components/ui/ai-task-state";
+import { HumanReviewBar } from "../../../../../../components/ui/human-review-bar";
+import { ProductErrorState } from "../../../../../../components/ui/error-state";
 import { ScriptDetail } from "../../../../../../components/script-detail";
 import { ScriptEditor } from "../../../../../../components/script-editor";
 import { ScriptHistory } from "../../../../../../components/script-history";
@@ -84,6 +88,8 @@ function ContentScriptsPageInner() {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [archiveAsk, setArchiveAsk] = useState(false);
+  const [regenAsk, setRegenAsk] = useState(false);
+  const [userEditedDraft, setUserEditedDraft] = useState(false);
   const [justConfirmed, setJustConfirmed] = useState(false);
   const [isCompactQueue, setIsCompactQueue] = useState(false);
 
@@ -331,6 +337,7 @@ function ContentScriptsPageInner() {
             onClick={() => {
               setDraft(currentPayload);
               setEditing(true);
+              setUserEditedDraft(false);
             }}
           >
             编辑草稿
@@ -338,23 +345,24 @@ function ContentScriptsPageInner() {
         )
       ) : null}
       {canConfirmScript(current.status) ? (
-        <div className="space-y-2">
-          <button
-            className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50"
-            type="button"
-            disabled={pending}
-            onClick={() => void confirm()}
-          >
-            确认脚本
-          </button>
-          <p className="text-neutral-600">确认后可继续制作视频，或批量写下一条脚本。</p>
-        </div>
+        <HumanReviewBar
+          context="这条视频脚本"
+          confirmLabel="确认脚本"
+          onConfirm={() => void confirm()}
+          onRequestChanges={() => {
+            if (currentPayload) {
+              setDraft(currentPayload);
+              setEditing(true);
+            }
+          }}
+          onDefer={() => undefined}
+        />
       ) : null}
       {justConfirmed && canGenerateVideo(current.status) ? (
         <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
           <p className="font-medium text-neutral-900">✓ 第 {focusItem?.dayIndex ?? "N"} 条脚本已确认</p>
           <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
-            制作这条视频
+            开始制作视频
           </Link>
           {currentProductionTopic ? (
             <button className="w-full rounded-md border px-4 py-2" type="button" onClick={goNextScriptTopic}>
@@ -369,7 +377,7 @@ function ContentScriptsPageInner() {
         <div className="space-y-2">
           <p className="text-neutral-700">脚本已确认，可以进入视频制作。</p>
           <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
-            继续制作视频
+            开始制作视频
           </Link>
         </div>
       ) : null}
@@ -378,7 +386,13 @@ function ContentScriptsPageInner() {
           className="w-full rounded-md border px-4 py-2 disabled:opacity-50"
           type="button"
           disabled={pending}
-          onClick={() => void generate()}
+          onClick={() => {
+            if (userEditedDraft || editing) {
+              setRegenAsk(true);
+              return;
+            }
+            void generate();
+          }}
         >
           重新生成脚本
         </button>
@@ -395,6 +409,26 @@ function ContentScriptsPageInner() {
             归档脚本
           </button>
         </details>
+      ) : null}
+      {regenAsk ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+          <p>重新生成会得到新版本，不会静默覆盖你改过的内容。确定继续？</p>
+          <div className="mt-2 flex gap-2">
+            <button
+              className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
+              type="button"
+              onClick={() => {
+                setRegenAsk(false);
+                void generate();
+              }}
+            >
+              生成新版本
+            </button>
+            <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setRegenAsk(false)}>
+              取消
+            </button>
+          </div>
+        </div>
       ) : null}
       {archiveAsk ? (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
@@ -421,9 +455,14 @@ function ContentScriptsPageInner() {
     <div>
       <PageHeader
         title="脚本"
-        description="按本期内容规划顺序制作脚本。系统会自动带入当前待制作选题。"
-        breadcrumb={`项目 / ${project.name} / 脚本`}
+        description="阅读、修改并确认这条视频脚本。选题、定位和风格已带入。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "脚本" },
+        ]}
       />
+      <ProductionContextHeaderV3 projectName={project.name} stageId="script" completed={["positioning", "planning"]} />
 
       {loading ? (
         <p className="text-sm text-neutral-600" aria-live="polite">
@@ -487,6 +526,11 @@ function ContentScriptsPageInner() {
                 pending={pending}
                 onChange={changeForm}
                 collapsedByDefault
+                contextLine={
+                  selectedTopic
+                    ? `已带入选题「${selectedTopic.title}」${selectedTopic.targetAudience ? `、目标用户「${selectedTopic.targetAudience}」` : ""}。不需要再填行业、平台或风格。`
+                    : "已根据内容计划带入选题。不需要再填行业或平台。"
+                }
               />
 
               {allScriptsDone && !form.topicId ? (
@@ -528,15 +572,9 @@ function ContentScriptsPageInner() {
                 </section>
               ) : null}
 
-              {pending ? (
-                <p className="text-sm text-neutral-700" aria-live="polite">
-                  AI 正在生成脚本…
-                </p>
-              ) : null}
+              {pending ? <AITaskState state="RUNNING" stages={["正在生成脚本"]} /> : null}
               {actionError ? (
-                <p className="text-sm text-red-600" role="alert">
-                  {actionError}
-                </p>
+                <ProductErrorState title="脚本没有完成" humanMessage={actionError} recoveryAction="稍后重试" />
               ) : null}
 
               {canGenerateFromForm(form) && !current ? (
@@ -557,7 +595,14 @@ function ContentScriptsPageInner() {
               {current && !currentView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
 
               {current && currentView && editing && draft ? (
-                <ScriptEditor draft={draft} pending={pending} onChange={setDraft} />
+                <ScriptEditor
+                  draft={draft}
+                  pending={pending}
+                  onChange={(next) => {
+                    setDraft(next);
+                    setUserEditedDraft(true);
+                  }}
+                />
               ) : null}
 
               {current && currentView && !editing ? (
@@ -579,6 +624,7 @@ function ContentScriptsPageInner() {
           ) : null}
         </div>
       ) : null}
+      <WorkflowFooterV3 projectId={projectId} stageId="script" />
     </div>
   );
 }
@@ -607,7 +653,7 @@ function TopicSummary({
     <dl className="mt-3 space-y-1">
       {(focus.hook || topic.hook) && (
         <div>
-          <dt className="text-neutral-500">Hook</dt>
+          <dt className="text-neutral-500">开头</dt>
           <dd className="whitespace-pre-wrap break-words">{focus.hook || topic.hook}</dd>
         </div>
       )}
@@ -627,7 +673,7 @@ function TopicSummary({
       )}
       {(focus.cta || topic.cta) && (
         <div>
-          <dt className="text-neutral-500">CTA</dt>
+          <dt className="text-neutral-500">希望观众下一步做什么</dt>
           <dd className="break-words">{focus.cta || topic.cta}</dd>
         </div>
       )}

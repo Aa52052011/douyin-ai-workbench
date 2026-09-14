@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const backend = process.env.BACKEND_URL ?? "http://localhost:3001";
 
 const nextConfig: NextConfig = {
+  // Next 16 proxy clones /api rewrite bodies; default 10MB truncates library MP4 uploads.
+  experimental: {
+    proxyClientMaxBodySize: "128mb",
+  },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${backend}/:path*` }];
   },

@@ -4,13 +4,17 @@ import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { AccountMemoryService } from '../memory/account-memory.service.js';
 import type { ProductBriefPayload } from './market.types.js';
 import { parseProductBriefPayload } from './product-brief.payload.js';
 import { toPublicProductBrief, type ProductBriefPublic } from './product-briefs.mapper.js';
 
 @Injectable()
 export class ProductBriefsService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly memory: AccountMemoryService,
+  ) {}
 
   async list(auth: AuthContext, projectId: string, workspaceHint?: string): Promise<ProductBriefPublic[]> {
     const project = await this.requireProject(auth, projectId, workspaceHint);
@@ -55,7 +59,9 @@ export class ProductBriefsService {
   ): Promise<ProductBriefPublic> {
     const project = await this.requireProject(auth, projectId, workspaceHint);
     const payload = parseProductBriefPayload(input);
-    return this.createVersion(auth.tenantId, project.workspaceId, project.id, payload);
+    const created = await this.createVersion(auth.tenantId, project.workspaceId, project.id, payload);
+    void this.memory.refreshMemorySafe(auth, project.id, 'PRODUCT_BRIEF_CONFIRMED', workspaceHint);
+    return created;
   }
 
   async requireCurrentPayload(

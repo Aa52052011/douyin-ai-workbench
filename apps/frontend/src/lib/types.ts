@@ -182,6 +182,15 @@ export type Asset = {
   contentPath: string;
   createdAt: string;
   updatedAt: string;
+  sourceType?: string;
+  sourceLabel?: string;
+  referenceOnly?: boolean;
+  reusable?: boolean;
+  rightsStatus?: string;
+  rightsLabel?: string;
+  libraryVisible?: boolean;
+  usedCount?: number;
+  typeLabel?: string;
 };
 
 export type Job = {

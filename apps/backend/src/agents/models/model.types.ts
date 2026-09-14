@@ -13,8 +13,10 @@ export type ModelGenerateRequest = {
   responseFormat?: 'text' | 'json';
   temperature?: number;
   maxTokens?: number;
-  /** Optional per-call HTTP abort budget; defaults to DEFAULT_AGENT_TIMEOUT_MS. */
+  /** Optional per-call HTTP abort budget; defaults to MODEL_ROUTE_TIMEOUT_MS. */
   timeoutMs?: number;
+  /** Combined with the agent ALS abort and the per-route timer. */
+  abortSignal?: AbortSignal;
   agentId?: string;
   tenantId?: string;
   task?: string;

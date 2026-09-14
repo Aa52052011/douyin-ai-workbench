@@ -17,8 +17,7 @@ export class AiEngineExecutor implements AgentExecutor {
       throw new AgentError(ErrorCode.AGENT_EXECUTION_FAILED, 'AI Engine secret is not configured');
     }
 
-    const work = this.call(request);
-    return runWithTimeout(work, timeoutMs);
+    return runWithTimeout(() => this.call(request), timeoutMs);
   }
 
   private async call(request: InternalAgentRequest): Promise<InternalAgentResponse> {

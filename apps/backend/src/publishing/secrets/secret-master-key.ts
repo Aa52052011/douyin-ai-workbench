@@ -18,3 +18,12 @@ export function parsePlatformSecretMasterKey(raw: string | undefined): Buffer {
 export function readPlatformSecretMasterKey(): Buffer {
   return parsePlatformSecretMasterKey(process.env[PLATFORM_SECRET_MASTER_KEY_ENV]);
 }
+
+export function isPlatformSecretMasterKeyConfigured(raw = process.env[PLATFORM_SECRET_MASTER_KEY_ENV]): boolean {
+  try {
+    parsePlatformSecretMasterKey(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}

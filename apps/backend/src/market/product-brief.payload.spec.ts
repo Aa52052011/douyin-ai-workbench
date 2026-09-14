@@ -23,5 +23,16 @@ describe('parseProductBriefPayload', () => {
     expect(parsed.productName).toBe('测试产品');
     expect(parsed.brand).toBeUndefined();
     expect(parsed.sellingPoints).toEqual(['卖点A', '卖点B']);
+    expect(parsed.goalCode).toBe('LEAD_GENERATION');
+  });
+
+  it('persists explicit goalCode authority when valid', () => {
+    const parsed = parseProductBriefPayload({
+      productName: '产品',
+      industry: '美妆',
+      businessGoal: '希望涨粉',
+      goalCode: 'SALES',
+    });
+    expect(parsed.goalCode).toBe('SALES');
   });
 });

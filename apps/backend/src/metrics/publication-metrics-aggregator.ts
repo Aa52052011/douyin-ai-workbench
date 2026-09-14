@@ -26,7 +26,7 @@ export type AggregatorSnapshot = {
 
 export type AggregatorPublication = {
   id: string;
-  videoId: string;
+  videoId: string | null;
   platform: string;
   publishedAt: Date | null;
 };
@@ -81,7 +81,7 @@ export type LatestPointMetrics = MetricRates & {
 
 export type PublicationPerformanceSummary = {
   publicationId: string;
-  videoId: string;
+  videoId: string | null;
   platform: string;
   publishedAt: Date | null;
   generatedAt: Date;

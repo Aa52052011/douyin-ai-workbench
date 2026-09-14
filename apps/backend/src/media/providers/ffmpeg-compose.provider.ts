@@ -60,10 +60,17 @@ export class FfmpegComposeProvider implements ComposeProvider {
       const scenes = await Promise.all(
         request.scenes!.map(async (scene, index) => {
           const body = await this.storage.get(scene.storageKey);
-          const filePath = path.join(work, sceneTempFilename(index, body, scene.mimeType));
+          const filePath = path.join(work, sceneTempFilename(index, body, scene.mimeType, scene.kind));
           await mkdir(path.dirname(filePath), { recursive: true });
           await writeFile(filePath, body);
-          return { path: filePath, duration: sceneDurations[index] };
+          return {
+            path: filePath,
+            duration: sceneDurations[index],
+            kind: scene.kind ?? (isVideoMime(scene.mimeType) ? 'video' : 'image'),
+            sourceStartSec: scene.sourceStartSec,
+            freezePadSec: scene.freezePadSec,
+            cropTopRatio: scene.cropTopRatio,
+          };
         }),
       );
       const voiceBody = await this.storage.get(request.voiceStorageKey!);
@@ -133,6 +140,19 @@ function resolveVoiceTempPath(work: string, mimeType: string | undefined, body: 
   return path.join(work, `voice${ext}`);
 }
 
-export function sceneTempFilename(index: number, body: Buffer, mimeType?: string): string {
+export function sceneTempFilename(
+  index: number,
+  body: Buffer,
+  mimeType?: string,
+  kind?: 'image' | 'video',
+): string {
+  const resolved = kind ?? (isVideoMime(mimeType) ? 'video' : 'image');
+  if (resolved === 'video') {
+    return `scene-${String(index + 1).padStart(3, '0')}.mp4`;
+  }
   return `scene-${String(index + 1).padStart(3, '0')}${extensionForSceneImage(body, mimeType)}`;
+}
+
+function isVideoMime(mimeType?: string): boolean {
+  return Boolean(mimeType?.startsWith('video/'));
 }

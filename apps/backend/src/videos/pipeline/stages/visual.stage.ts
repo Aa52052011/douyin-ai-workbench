@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AssetLinkRole, AssetType } from '@prisma/client';
+import { pipelineAssetDefaults } from '../../../assets/asset-library.js';
 import { AppError, ErrorCode } from '../../../common/errors/app-error.js';
 import { parseResolution } from '../../../media/ffmpeg/ffmpeg-config.js';
 import { IMAGE_PROVIDER } from '../../../media/providers/image.token.js';
@@ -19,10 +20,20 @@ import type {
   ProductionScene,
   VisualSceneCheckpoint,
 } from '../production-plan.types.js';
+import { isAssetProductionEligible } from '../../../assets/asset-library.js';
+import type { ResolvedShotMaterial } from '../material-resolve.types.js';
+import { UsageMeteringService } from '../../../usage/usage-metering.service.js';
+import { getMeteringScope } from '../../../usage/metering-context.js';
+import { usageIdempotencyKey } from '../../../usage/usage-idempotency.js';
+import { withUsageMetering } from '../../../usage/with-usage-metering.js';
+import { UsageOperationType, UsageResourceType, UsageUnitType } from '@prisma/client';
 
 @Injectable()
 export class VisualGenerationStage {
-  constructor(@Inject(IMAGE_PROVIDER) private readonly images: ImageProvider) {}
+  constructor(
+    @Inject(IMAGE_PROVIDER) private readonly images: ImageProvider,
+    @Optional() private readonly metering?: UsageMeteringService,
+  ) {}
 
   async run(ctx: StageContext): Promise<string[]> {
     void visualMaxConcurrency();
@@ -52,6 +63,24 @@ export class VisualGenerationStage {
         throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
       }
       const existing = scenes.find((item) => item.sceneId === scene.sceneId);
+      const libraryHit = await this.reuseResolvedLibraryAsset(ctx, scene, index);
+      if (libraryHit) {
+        await this.ensureLink(ctx, libraryHit.id, scene);
+        assetIds[index] = libraryHit.id;
+        upsertScene(scenes, {
+          sceneId: scene.sceneId,
+          sequence: scene.sequence,
+          status: 'ready',
+          assetId: libraryHit.id,
+          storageKey: libraryHit.storageKey,
+          provider: 'library',
+          model: 'existing-asset',
+          clientRequestId: visualClientRequestId(ctx.job.id, scene.sceneId, ctx.generationVersion),
+          generationVersion: ctx.generationVersion,
+        });
+        await this.persist(ctx, scenes, assetIds);
+        continue;
+      }
       const reused = await findReusableVisualAsset(ctx, scene, existing);
       if (reused) {
         await this.ensureLink(ctx, reused.id, scene);
@@ -108,18 +137,57 @@ export class VisualGenerationStage {
       });
       let rendered;
       try {
-        rendered = await this.images.generate({
-          sceneId: scene.sceneId,
-          sequence: scene.sequence,
-          prompt: scene.visualPrompt,
-          negativePrompt: scene.visualNegativePrompt,
-          aspectRatio: ctx.plan.aspectRatio,
-          width,
-          height,
-          style: scene.visualSuggestion,
-          clientRequestId,
-          storageKey: key,
-        });
+        rendered = await withUsageMetering(
+          this.metering,
+          {
+            tenantId: ctx.job.tenantId,
+            workspaceId: ctx.job.workspaceId,
+            projectId: ctx.job.projectId,
+            videoId: ctx.plan.videoId,
+            jobId: ctx.job.id,
+            generationVersion: ctx.generationVersion,
+            stage: getMeteringScope()?.stage ?? 'VISUAL',
+            repairAttempt: getMeteringScope()?.repairAttempt,
+            operationType: UsageOperationType.IMAGE_GENERATION,
+            provider: this.images.id,
+            model: this.images.model,
+            resourceType: UsageResourceType.AI_IMAGE,
+            idempotencyKey: usageIdempotencyKey([
+              'ai_image',
+              ctx.job.id,
+              ctx.generationVersion,
+              clientRequestId,
+              getMeteringScope()?.repairAttempt ?? 0,
+            ]),
+            metadata: {
+              stage: 'VISUAL',
+              generationVersion: ctx.generationVersion,
+              sceneSequence: scene.sequence,
+              billable: !this.images.id.includes('mock') && this.images.id !== 'color-background',
+              reason: getMeteringScope()?.repairAttempt ? 'quality_repair' : 'production',
+              repairAttempt: getMeteringScope()?.repairAttempt ?? 0,
+            },
+          },
+          () =>
+            this.images.generate({
+              sceneId: scene.sceneId,
+              sequence: scene.sequence,
+              prompt: scene.visualPrompt,
+              negativePrompt: scene.visualNegativePrompt,
+              aspectRatio: ctx.plan.aspectRatio,
+              width,
+              height,
+              style: scene.visualSuggestion,
+              clientRequestId,
+              storageKey: key,
+            }),
+          (item) => ({
+            imageCount: item.usage?.imageCount ?? 1,
+            totalUnits: item.usage?.imageCount ?? 1,
+            unitType: UsageUnitType.IMAGES,
+            providerRequestId: item.providerTaskId ?? item.usage?.providerTaskId,
+          }),
+        );
       } catch (error) {
         const appError = error instanceof AppError ? error : new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
         const freeze = isPaidImageProvider(this.images.id) && isPaidVisualFreezeError(appError);
@@ -138,6 +206,7 @@ export class VisualGenerationStage {
         throw freeze ? new AppError(ErrorCode.VISUAL_PROVIDER_UNKNOWN_BILLING) : appError;
       }
       try {
+        const library = pipelineAssetDefaults('visual');
         await ctx.prisma.asset.create({
           data: {
             id: assetId,
@@ -153,6 +222,15 @@ export class VisualGenerationStage {
             size: rendered.size,
             width: rendered.width,
             height: rendered.height,
+            sourceType: library.sourceType,
+            ownerType: library.ownerType,
+            referenceOnly: library.referenceOnly,
+            reusable: library.reusable,
+            rightsStatus: library.rightsStatus,
+            consentStatus: library.consentStatus,
+            libraryVisible: library.libraryVisible,
+            provider: rendered.provider,
+            generatedFromJobId: ctx.job.id,
             metadata: {
               jobId: ctx.job.id,
               videoId: ctx.plan.videoId,
@@ -200,6 +278,36 @@ export class VisualGenerationStage {
     }
     await this.persist(ctx, scenes, completed, 'completed');
     return completed;
+  }
+
+  private async reuseResolvedLibraryAsset(
+    ctx: StageContext,
+    scene: ProductionScene,
+    _index: number,
+  ): Promise<{ id: string; storageKey: string } | null> {
+    const resolved = readResolvedShot(ctx, scene.sequence);
+    if (!resolved?.assetId || resolved.generationRequired) {
+      return null;
+    }
+    const row = await ctx.prisma.asset.findFirst({
+      where: {
+        id: resolved.assetId,
+        tenantId: ctx.job.tenantId,
+        workspaceId: ctx.job.workspaceId,
+        deletedAt: null,
+      },
+    });
+    if (!row) {
+      return null;
+    }
+    const eligibility = isAssetProductionEligible({ asset: row, callerTenantId: ctx.job.tenantId });
+    if (!eligibility.eligible) {
+      return null;
+    }
+    if (!(await ctx.storage.exists(row.storageKey))) {
+      return null;
+    }
+    return { id: row.id, storageKey: row.storageKey };
   }
 
   private async persist(
@@ -301,6 +409,19 @@ function isPaidVisualFreezeError(error: AppError): boolean {
     error.code === ErrorCode.VISUAL_PROVIDER_DOWNLOAD ||
     error.code === ErrorCode.VISUAL_PROVIDER_INVALID_RESPONSE
   );
+}
+
+function readResolvedShot(ctx: StageContext, sequence: number): ResolvedShotMaterial | undefined {
+  const fromOutput = asPipelineOutput(ctx.job.output).materialResolution?.shots.find((item) => item.sequence === sequence);
+  if (fromOutput) {
+    return fromOutput;
+  }
+  const input = ctx.job.input;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return undefined;
+  }
+  const snapshot = (input as { materialResolution?: { shots?: ResolvedShotMaterial[] } }).materialResolution;
+  return snapshot?.shots?.find((item) => item.sequence === sequence);
 }
 
 export type { JobPipelineOutput };

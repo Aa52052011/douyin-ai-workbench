@@ -21,12 +21,7 @@ function source(rel: string): string {
 }
 
 function flattenProjectHrefs(projectId: string): string[] {
-  return PROJECT_NAV.flatMap((group) => {
-    if ("href" in group) {
-      return [group.href(projectId)];
-    }
-    return group.items.map((item) => item.href(projectId));
-  });
+  return PROJECT_NAV.map((item) => item.href(projectId));
 }
 
 function run() {
@@ -155,7 +150,7 @@ function run() {
 
   assert.deepEqual(
     GLOBAL_NAV.map((item) => item.label),
-    ["工作台", "项目", "设置"],
+    ["工作台", "项目", "发布与数据", "设置"],
   );
   const visible = GLOBAL_NAV.map((item) => item.label as string);
   for (const label of HIDDEN_ENGINEERING_NAV_LABELS) {
@@ -164,16 +159,11 @@ function run() {
   const hrefs = flattenProjectHrefs("proj_1");
   assert.deepEqual(hrefs, [
     "/dashboard/projects/proj_1",
-    "/dashboard/projects/proj_1/product",
     "/dashboard/projects/proj_1/positioning",
-    "/dashboard/projects/proj_1/market/research",
-    "/dashboard/projects/proj_1/market/analysis",
-    "/dashboard/projects/proj_1/strategy",
     "/dashboard/projects/proj_1/content/plans",
     "/dashboard/projects/proj_1/content/scripts",
     "/dashboard/projects/proj_1/content/videos",
     "/dashboard/projects/proj_1/publish",
-    "/dashboard/projects/proj_1/performance",
   ]);
   for (const href of hrefs) {
     assert.equal(isLegacyDebugRoute(href), false, href);

@@ -1,0 +1,73 @@
+export const CONFLICT_SCENARIOS = [
+  {
+    id: 'A',
+    name: 'Top strip + Product navigation',
+    deterministic: 'TOP_STRUCTURED_STRIP',
+    semantic: 'PRODUCT_NAVIGATION',
+    resolution: 'PREFER_MUST_KEEP',
+    mustNot: 'CROP_TOP_STRIP',
+  },
+  {
+    id: 'B',
+    name: 'Top strip + Browser chrome',
+    deterministic: 'TOP_STRUCTURED_STRIP',
+    semantic: 'BROWSER_CHROME',
+    resolution: 'PREFER_SEMANTIC',
+    may: 'STRONGER_TRIM_CANDIDATE',
+  },
+  {
+    id: 'C',
+    name: 'Geometry rank1 CONTAIN but UI too small',
+    deterministic: 'CONTAIN_RANK_1',
+    semantic: 'LOW_UI_READABILITY',
+    resolution: 'ESCALATE_HUMAN',
+  },
+  {
+    id: 'D',
+    name: 'CENTER high occupancy clips mustKeep UI',
+    deterministic: 'CENTER_HIGH_OCCUPANCY',
+    semantic: 'MUST_KEEP_UI',
+    resolution: 'PREFER_MUST_KEEP',
+    mustNot: 'SELECT_CENTER',
+  },
+  {
+    id: 'E',
+    name: 'Old asset geometry good but stale/unrelated',
+    deterministic: 'GEOMETRY_GOOD',
+    semantic: 'STALE_UNRELATED',
+    resolution: 'PREFER_SAFETY',
+    usage: 'DO_NOT_USE',
+  },
+  {
+    id: 'F',
+    name: 'Product header mistaken as browser',
+    deterministic: 'TOP_STRUCTURED_STRIP',
+    semantic: 'AMBIGUOUS_CHROME',
+    resolution: 'ESCALATE_HUMAN',
+    mustNot: 'TREAT_AS_BROWSER_WITHOUT_JOINT_EVIDENCE',
+  },
+  {
+    id: 'G',
+    name: 'Watermark overlaps evidence',
+    deterministic: 'GEOMETRY_OK',
+    semantic: 'WATERMARK_OVER_EVIDENCE',
+    resolution: 'PREFER_SAFETY',
+  },
+  {
+    id: 'H',
+    name: 'Privacy region inside UI focus',
+    deterministic: 'UI_GEOMETRY',
+    semantic: 'PRIVACY_INSIDE_FOCUS',
+    resolution: 'PREFER_SAFETY',
+    future: 'MASK_OR_BLOCK',
+  },
+] as const;
+
+export const LOW_CONFIDENCE_SCENARIOS = [
+  { id: 'blurred-text', fallback: 'FALLBACK_DETERMINISTIC' },
+  { id: 'partial-browser-bar', fallback: 'WARN' },
+  { id: 'tiny-ui', fallback: 'REQUEST_CONFIRMATION' },
+  { id: 'ambiguous-logo', fallback: 'UNKNOWN' },
+  { id: 'possible-watermark', fallback: 'WARN' },
+  { id: 'uncertain-person-info', fallback: 'MUST_NOT_PRIVACY_DELETE' },
+] as const;

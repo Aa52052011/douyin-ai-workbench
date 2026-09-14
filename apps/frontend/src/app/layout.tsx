@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AuthProvider } from "../lib/auth-context";
+import { AppProviders } from "../components/app-providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="zh-CN">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

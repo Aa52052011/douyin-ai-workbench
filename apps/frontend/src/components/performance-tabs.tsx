@@ -6,7 +6,7 @@ export function PerformanceTabs({
   onChange: (tab: "metrics" | "advice") => void;
 }) {
   return (
-    <div className="flex gap-2" role="tablist" aria-label="表现与建议">
+    <div className="flex gap-2" role="tablist" aria-label="数据优化">
       <button
         className={`rounded-md px-4 py-2 text-sm ${tab === "metrics" ? "bg-neutral-950 text-white" : "border"}`}
         type="button"

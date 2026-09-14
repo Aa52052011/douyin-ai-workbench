@@ -5,6 +5,7 @@ import {
   mergeMarketIntakeDraft,
   sanitizeMarketIntakeDraftPatch,
   sanitizeMarketIntakeSuggestions,
+  sanitizeMarketIntakeUserDraft,
 } from './market-intake.patch.js';
 import {
   marketIntakeDefinition,
@@ -36,6 +37,22 @@ describe('market.intake patch validator', () => {
     });
     expect(() => sanitizeMarketIntakeDraftPatch({ playCount: 1 })).toThrow();
     expect(() => sanitizeMarketIntakeDraftPatch({ likeCount: 1 })).toThrow();
+  });
+
+  it('maps legacy user draft aliases and strips unknown keys', () => {
+    expect(
+      sanitizeMarketIntakeUserDraft({
+        keywords: ['手冲咖啡'],
+        competitors: ['邻家咖啡'],
+        referenceUrl: 'https://example.com/coffee',
+        extraIgnored: true,
+      }),
+    ).toEqual({
+      keywords: ['手冲咖啡'],
+      competitorAccounts: [{ displayName: '邻家咖啡' }],
+      publicLinks: [{ url: 'https://example.com/coffee' }],
+    });
+    expect(() => sanitizeMarketIntakeDraftPatch({ competitors: ['邻家咖啡'] })).toThrow();
   });
 
   it('rejects unknown keys, forbidden AI fields, and prototype pollution', () => {

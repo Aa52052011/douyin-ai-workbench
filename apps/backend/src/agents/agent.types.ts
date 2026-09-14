@@ -76,6 +76,15 @@ export type AgentRunPublic = {
 };
 
 export const DEFAULT_AGENT_TIMEOUT_MS = 60_000;
+/** Floor for production LLM agents. Never lower an already-higher agent timeout. */
+export const MIN_PRODUCTION_LLM_TIMEOUT_MS = 210_000;
+
+export function productionLlmTimeoutMs(configuredMs: number): number {
+  if (!Number.isFinite(configuredMs) || configuredMs <= 0) {
+    return MIN_PRODUCTION_LLM_TIMEOUT_MS;
+  }
+  return Math.max(configuredMs, MIN_PRODUCTION_LLM_TIMEOUT_MS);
+}
 
 export const ECHO_AGENT_ID = 'system.echo';
 export const ECHO_AGENT_VERSION = 'v1';
@@ -116,3 +125,26 @@ export const MARKET_INTAKE_AGENT_ID = 'market.intake';
 export const MARKET_INTAKE_AGENT_VERSION = 'v1';
 export const MARKET_INTAKE_PROMPT = 'market.intake';
 export const MARKET_INTAKE_TIMEOUT_MS = 60_000;
+
+export const REFERENCE_ANALYSIS_AGENT_ID = 'reference.analysis';
+export const REFERENCE_ANALYSIS_AGENT_VERSION = 'v1';
+export const REFERENCE_ANALYSIS_PROMPT = 'reference.analysis';
+export const REFERENCE_ANALYSIS_TIMEOUT_MS = 60_000;
+
+export const PRODUCTION_QUALITY_AGENT_ID = 'production.quality';
+export const PRODUCTION_QUALITY_AGENT_VERSION = 'v1';
+export const PRODUCTION_QUALITY_PROMPT = 'production.quality';
+export const PRODUCTION_QUALITY_TIMEOUT_MS = 30_000;
+
+export const MARKET_RESEARCH_PLAN_AGENT_ID = 'market.research.plan';
+export const MARKET_RESEARCH_PLAN_AGENT_VERSION = 'v1';
+export const MARKET_RESEARCH_PLAN_TIMEOUT_MS = 30_000;
+
+export const PERFORMANCE_LEARNING_AGENT_ID = 'performance.learning';
+export const PERFORMANCE_LEARNING_AGENT_VERSION = 'v1';
+export const PERFORMANCE_LEARNING_TIMEOUT_MS = 30_000;
+
+export const PERFORMANCE_ANALYSIS_AGENT_ID = 'performance.analysis';
+export const PERFORMANCE_ANALYSIS_AGENT_VERSION = 'v1';
+export const PERFORMANCE_ANALYSIS_PROMPT = 'performance.analysis';
+export const PERFORMANCE_ANALYSIS_TIMEOUT_MS = 30_000;

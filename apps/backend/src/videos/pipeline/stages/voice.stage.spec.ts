@@ -95,4 +95,34 @@ describe('VoiceGenerationStage', () => {
     expect(synthesize).not.toHaveBeenCalled();
     expect(result.duration).toBe(4);
   });
+
+  it('does not start TTS metering when reusing a READY voice asset', async () => {
+    const synthesize = vi.fn();
+    const startUsage = vi.fn();
+    const tts = { id: 'openai-tts', synthesize } as unknown as TtsProvider;
+    const metering = { startUsage, completeUsage: vi.fn(), failUsage: vi.fn() };
+    const ctx = {
+      prisma: {
+        asset: {
+          findFirst: vi.fn(async () => ({
+            id: '55555555-5555-4555-8555-555555555555',
+            duration: 4,
+            status: AssetStatus.READY,
+            deletedAt: null,
+            storageKey: KEY,
+          })),
+        },
+      },
+      storage: { exists: vi.fn(async () => true) },
+      job: {
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        output: { stages: { voice: { assetIds: ['55555555-5555-4555-8555-555555555555'], duration: 4 } } },
+      },
+      plan: { voice: { text: 'x', style: 'default', language: 'zh-CN', speed: 1 } },
+      generationVersion: 'abc',
+    } as unknown as StageContext;
+    await new VoiceGenerationStage(tts, metering as never).run(ctx);
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(startUsage).not.toHaveBeenCalled();
+  });
 });

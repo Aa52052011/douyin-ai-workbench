@@ -26,6 +26,12 @@ export async function isReusableVoiceAsset(ctx: StageContext, asset: Asset | nul
   if (metadataString(asset.metadata, 'generationVersion') !== ctx.generationVersion) {
     return false;
   }
+  const storedVoice =
+    metadataString(asset.metadata, 'resolvedVoiceId') ?? metadataString(asset.metadata, 'voiceId') ?? 'sys.default';
+  const currentVoice = ctx.plan.voice.resolvedVoiceId ?? 'sys.default';
+  if (storedVoice !== currentVoice) {
+    return false;
+  }
   const storedHash = metadataString(asset.metadata, 'voiceTextHash');
   if (storedHash && storedHash !== voiceTextFingerprint(ctx.plan.voice.text)) {
     return false;

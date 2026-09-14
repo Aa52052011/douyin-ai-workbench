@@ -4,6 +4,7 @@ import { BullMqJobQueue } from './bullmq-job.queue.js';
 import { InMemoryJobQueue } from './in-memory-job.queue.js';
 import { UnavailableJobQueue } from './unavailable-job.queue.js';
 import { usesInMemoryJobQueue } from './redis-config.js';
+import { resolveJobQueueName } from './queue.constants.js';
 
 export function createJobQueue(): JobQueue {
   if (usesInMemoryJobQueue()) {
@@ -16,5 +17,5 @@ export function createJobQueue(): JobQueue {
     }
     return new UnavailableJobQueue();
   }
-  return new BullMqJobQueue(url);
+  return new BullMqJobQueue(url, { queueName: resolveJobQueueName() });
 }

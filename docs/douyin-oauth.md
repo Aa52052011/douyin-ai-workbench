@@ -2,7 +2,9 @@
 
 状态：**账号授权架构已落地。OAuth 已连接 ≠ 已开通 Douyin 发布能力，也 ≠ 已开通 metrics 能力。**
 
-Douyin API 发布仍由 Registry fail closed：`PUBLISHING_PROVIDER_NOT_IMPLEMENTED`。本步骤不实现 `create_video` / upload / 状态轮询。
+Douyin Official Upload/Create HTTP 已实现但 **默认 `DOUYIN_LIVE_API_ENABLED=false`**。没有 Publication Authorization、账号、`video.create.bind`、能力确认前禁止副作用。
+
+OAuth Publishing Account Connect 默认请求：`user_info,video.create.bind`。`LOGIN_ONLY` 仅 `user_info`。Callback 后以实际 granted scopes 为准，不得假定已授予发布权限。
 
 依据：[publishing-foundation.md](./publishing-foundation.md)、[architecture.md](./architecture.md)。
 
@@ -27,7 +29,7 @@ Browser
 
 禁止：password / cookie / session 抓取、扫码自动化、把 `code` 交给 frontend 换 token、把 token 放进 callback query。
 
-最小 scope：**`user_info`**。不请求 `video.create.bind`。least privilege。未来 Step 8.7 真实发布能力通过后再增加。
+默认 Publishing connect scope：**`user_info,video.create.bind`**。LOGIN_ONLY：**`user_info`**。granted scopes 必须事后校验。
 
 ---
 
@@ -35,7 +37,7 @@ Browser
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/platform-accounts/douyin/connect` | JWT + `PLATFORM_ACCOUNT_MANAGE` | 返回 `{ authorizationUrl }`。URL 含 `client_key` `response_type=code` `scope=user_info` `redirect_uri` `state`。不含 `client_secret` |
+| POST | `/platform-accounts/douyin/connect` | JWT + `PLATFORM_ACCOUNT_MANAGE` | 返回 `{ authorizationUrl }`。默认 scope=`user_info,video.create.bind`（`?purpose=LOGIN_ONLY` 则仅 user_info）。含 `client_key` `response_type=code` `redirect_uri` `state`。不含 `client_secret` |
 | GET | `/platform-accounts/douyin/callback` | 无 JWT（靠一次性 state） | 服务端换 token。成功返回 HTML，失败 JSON 业务错误。禁止 token |
 | GET | `/platform-accounts` | JWT | 当前 workspace 账号列表 |
 | GET | `/platform-accounts/:id` | JWT | 详情。跨租户 / 跨 workspace → `PLATFORM_ACCOUNT_NOT_FOUND` |

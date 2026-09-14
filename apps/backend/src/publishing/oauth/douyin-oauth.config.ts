@@ -1,6 +1,45 @@
 import { AppError, ErrorCode } from '../../common/errors/app-error.js';
 
 export const DOUYIN_OAUTH_SCOPE_USER_INFO = 'user_info';
+/** Required for official upload_video + create_video. */
+export const DOUYIN_OAUTH_SCOPE_VIDEO_CREATE_BIND = 'video.create.bind';
+export const DOUYIN_OAUTH_PURPOSES = ['LOGIN_ONLY', 'PUBLISHING'] as const;
+export type DouyinOAuthPurpose = (typeof DOUYIN_OAUTH_PURPOSES)[number];
+export const DOUYIN_OAUTH_LOGIN_SCOPES = [DOUYIN_OAUTH_SCOPE_USER_INFO] as const;
+export const DOUYIN_OAUTH_PUBLISHING_SCOPES = [DOUYIN_OAUTH_SCOPE_USER_INFO, DOUYIN_OAUTH_SCOPE_VIDEO_CREATE_BIND] as const;
+
+export function parseDouyinOAuthPurpose(value: string | undefined): DouyinOAuthPurpose {
+  return value === 'LOGIN_ONLY' ? 'LOGIN_ONLY' : 'PUBLISHING';
+}
+
+export function scopesForOAuthPurpose(purpose: DouyinOAuthPurpose): string[] {
+  return purpose === 'LOGIN_ONLY' ? [...DOUYIN_OAUTH_LOGIN_SCOPES] : [...DOUYIN_OAUTH_PUBLISHING_SCOPES];
+}
+
+export function formatDouyinScopeParam(scopes: readonly string[]): string {
+  return scopes.join(',');
+}
+
+export function grantedScopesIncludePublish(scopes: readonly string[]): boolean {
+  return scopes.includes(DOUYIN_OAUTH_SCOPE_VIDEO_CREATE_BIND);
+}
+
+export function evaluateGrantedScopes(input: { purpose: DouyinOAuthPurpose; granted: readonly string[] }): {
+  requested: string[];
+  granted: string[];
+  missing: string[];
+  publishingEligibleByScope: boolean;
+} {
+  const requested = scopesForOAuthPurpose(input.purpose);
+  const granted = [...input.granted];
+  const missing = requested.filter((scope) => !granted.includes(scope));
+  return {
+    requested,
+    granted,
+    missing,
+    publishingEligibleByScope: grantedScopesIncludePublish(granted),
+  };
+}
 export const DEFAULT_DOUYIN_OAUTH_BASE_URL = 'https://open.douyin.com';
 export const DEFAULT_DOUYIN_API_BASE_URL = 'https://open.douyin.com';
 export const DOUYIN_AUTHORIZE_PATH = '/platform/oauth/connect';

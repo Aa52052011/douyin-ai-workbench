@@ -4,8 +4,12 @@
  */
 import type { ContentPlanOutput, ContentTopic } from './content-planning.types.js';
 import type { ScriptOutput } from './script-generation.types.js';
+import { normalizeBusinessGoal } from '../../common/business-goal.js';
 
 export type CompactPlanTopicContext = {
+  /** 1-based batch sequence (Item N). Prefer this for prompt semantics. */
+  itemIndex: number;
+  /** Legacy field retained for contract compatibility. */
   dayIndex: number;
   title: string;
   contentPillar?: string;
@@ -18,6 +22,7 @@ export type CompactPlanTopicContext = {
 export type CompactContentPlanContext = {
   planTitle: string;
   planSummary?: string;
+  batchSize: number;
   planningDays?: number;
   postsPerDay?: number;
   topics: CompactPlanTopicContext[];
@@ -36,6 +41,7 @@ export type CompactPreviousScriptSummary = {
 export type CompactStrategyContext = {
   primaryObjective?: string;
   businessGoal?: string;
+  goalCode?: string;
   audience?: string;
   accountRole?: string;
   marketPosition?: string;
@@ -57,8 +63,9 @@ export function buildCompactContentPlanContext(input: {
   const currentIndex = ordered.findIndex((item) => item.id === input.currentTopicId);
 
   return {
-    planTitle: (input.planTitle ?? payload?.title ?? '').trim() || '本期内容规划',
+    planTitle: (input.planTitle ?? payload?.title ?? '').trim() || '本期内容计划',
     planSummary: payload?.summary?.trim() || undefined,
+    batchSize: ordered.length,
     planningDays: payload?.planningDays,
     postsPerDay: payload?.postsPerDay,
     topics: ordered.map((topic, index) => {
@@ -66,6 +73,7 @@ export function buildCompactContentPlanContext(input: {
       if (index === currentIndex) role = 'CURRENT';
       else if (currentIndex >= 0 && index < currentIndex) role = 'PREVIOUS';
       return {
+        itemIndex: index + 1,
         dayIndex: typeof topic.dayIndex === 'number' ? topic.dayIndex : index + 1,
         title: topic.title?.trim() || `选题 ${index + 1}`,
         contentPillar: topic.contentPillar?.trim() || undefined,
@@ -157,9 +165,11 @@ export function buildCompactStrategyContext(payload: unknown): CompactStrategyCo
   if (!primaryObjective && !businessGoal && !audiencePrimary) {
     return undefined;
   }
+  const goal = businessGoal ? normalizeBusinessGoal({ businessGoal }) : undefined;
   return {
     primaryObjective: primaryObjective || undefined,
     businessGoal: businessGoal || undefined,
+    goalCode: goal?.goalCode,
     audience: audiencePrimary || undefined,
     accountRole: accountRole || undefined,
     marketPosition: marketPosition || undefined,

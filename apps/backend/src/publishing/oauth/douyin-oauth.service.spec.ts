@@ -52,16 +52,23 @@ describe('DouyinOAuthService', () => {
     service = new DouyinOAuthService(prisma as never, secrets as never, oauth, states);
   });
 
-  it('builds an official authorize URL with user_info and cryptographic state', async () => {
+  it('builds an official authorize URL with publishing scopes and cryptographic state', async () => {
     const result = await service.startConnect(auth);
     const url = new URL(result.authorizationUrl);
     expect(url.origin + url.pathname).toBe('https://open.douyin.com/platform/oauth/connect');
     expect(url.searchParams.get('client_key')).toBe('test-client-key');
     expect(url.searchParams.get('response_type')).toBe('code');
-    expect(url.searchParams.get('scope')).toBe(DOUYIN_OAUTH_SCOPE_USER_INFO);
+    expect(url.searchParams.get('scope')).toBe('user_info,video.create.bind');
+    expect(result.purpose).toBe('PUBLISHING');
     expect(url.searchParams.get('redirect_uri')).toBe('https://example.test/platform-accounts/douyin/callback');
     expect(url.searchParams.get('state')?.length).toBeGreaterThanOrEqual(32);
     expect(result.authorizationUrl).not.toContain('test-client-secret');
+  });
+
+  it('requests user_info only for LOGIN_ONLY purpose', async () => {
+    const result = await service.startConnect(auth, undefined, 'LOGIN_ONLY');
+    const url = new URL(result.authorizationUrl);
+    expect(url.searchParams.get('scope')).toBe(DOUYIN_OAUTH_SCOPE_USER_INFO);
     expect(url.searchParams.get('scope')).not.toContain('video.create.bind');
   });
 

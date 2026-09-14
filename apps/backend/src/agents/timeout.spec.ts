@@ -24,4 +24,11 @@ describe('runWithTimeout', () => {
       code: ErrorCode.AGENT_TIMEOUT,
     });
   });
+
+  it('exposes remaining agent budget inside the execution store', async () => {
+    const { remainingAgentBudgetMs } = await import('./timeout.js');
+    const remaining = await runWithTimeout(async () => remainingAgentBudgetMs(), 1_000);
+    expect(remaining).toBeGreaterThan(500);
+    expect(remaining).toBeLessThanOrEqual(1_000);
+  });
 });

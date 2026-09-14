@@ -32,6 +32,24 @@ export type ContentPlanningInput = {
   campaignStrategy?: CampaignStrategyPlanningSnapshot;
   trendData?: TrendDataSnapshot;
   performanceFeedback?: CompactPerformanceFeedback;
+  learningContext?: {
+    confirmed: Array<{ key: string; summary: string; supportCount: number; status: string }>;
+    candidate: Array<{ key: string; summary: string; supportCount: number; status: string }>;
+    latestRecommendations?: Array<{ actionLabel: string; rationale: string }>;
+    previousBatchSummary?: {
+      planId?: string;
+      title?: string | null;
+      sampleSize: number;
+      publicationsConsidered: number;
+    };
+  };
+  nextContentPlanningFeedback?: {
+    schemaVersion: 'next.content-planning-feedback:v1';
+    approvedRecommendations: unknown[];
+    sourceAnalysisId: string;
+    sourcePublishedPostId: string;
+    feedbackCycleId: string;
+  };
 };
 
 export type ContentTopic = {
@@ -85,6 +103,8 @@ export const CONTENT_PLANNING_INPUT_KEYS = [
   'campaignStrategy',
   'trendData',
   'performanceFeedback',
+  'learningContext',
+  'nextContentPlanningFeedback',
 ] as const;
 
 export const CONTENT_PLAN_FORBIDDEN_KEYS = FORBIDDEN_CONTEXT_KEYS;

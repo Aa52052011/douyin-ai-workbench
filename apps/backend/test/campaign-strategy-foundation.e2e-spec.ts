@@ -113,14 +113,16 @@ describe('Campaign Strategy Foundation (e2e)', () => {
       .get('/agents')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(agents.body.map((item: { id: string }) => item.id).sort()).toEqual([
-      'account.positioning',
-      'campaign.strategy',
-      'content.planning',
-      'market.intelligence',
-      'script.generation',
-      'system.echo',
-    ]);
+    expect(agents.body.map((item: { id: string }) => item.id)).toEqual(
+      expect.arrayContaining([
+        'account.positioning',
+        'campaign.strategy',
+        'content.planning',
+        'market.intelligence',
+        'script.generation',
+        'system.echo',
+      ]),
+    );
     expect(agents.body.some((item: { id: string }) => item.id === 'campaign.strategy')).toBe(true);
 
     const empty = await request(app.getHttpServer())

@@ -197,12 +197,16 @@ export function MarketIntakeDraftPanel({
   pending,
   onChangeDraft,
   onConfirm,
+  projectId: _projectId,
+  accessToken: _accessToken,
 }: {
   draft: MarketIntakeDraft;
   readiness: MarketIntakeReadiness;
   pending?: boolean;
   onChangeDraft: (next: MarketIntakeDraft) => void;
   onConfirm: () => void;
+  projectId?: string;
+  accessToken?: string;
 }) {
   return (
     <aside className="flex min-h-0 min-w-0 flex-col rounded-xl border border-neutral-200 bg-white">

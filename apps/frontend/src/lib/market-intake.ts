@@ -13,6 +13,14 @@ import type {
   MarketIntakeSuggestion,
   MarketLinkDraft,
 } from "./market-intake.types";
+import { normalizeMarketSourceEntries } from "./market-intake.types";
+import {
+  classifyMarketUrl,
+  createSourceId,
+  upsertMarketSource,
+  type MarketSourceDraftEntry,
+  type MarketSourceRole,
+} from "./market-source";
 
 export const MARKET_INTAKE_OPENING_MESSAGE =
   "我已经了解你的产品信息。接下来我们一起整理市场调研素材。\n\n你可以告诉我：\n- 想研究的关键词\n- 关注过的竞品\n- 看过的公开视频\n- 对市场的观察\n\n如果暂时什么都没有，也可以直接告诉我。";
@@ -70,6 +78,8 @@ export function emptyMarketIntakeDraft(): MarketIntakeDraft {
     commonSellingPoints: [],
     marketHypotheses: [],
     uploadedSources: [],
+    sources: [],
+    researchRequested: false,
     userAcknowledgedLimitedData: false,
   };
 }
@@ -161,11 +171,14 @@ export function sanitizeMarketIntakeDraft(raw: Partial<MarketIntakeDraft> | null
     commonSellingPoints: normalizeStrings(raw.commonSellingPoints, LIMITS.sellingPoints, LIMITS.sellingPoint),
     marketHypotheses: normalizeStrings(raw.marketHypotheses, LIMITS.hypotheses, LIMITS.hypothesis),
     uploadedSources: normalizeStrings(raw.uploadedSources, 20, 200),
+    sources: normalizeMarketSourceEntries(raw.sources).filter((s) => s.role !== "PRODUCTION_ASSET"),
+    researchRequested: Boolean(raw.researchRequested),
     userAcknowledgedLimitedData: Boolean(raw.userAcknowledgedLimitedData),
   };
 }
 
 export function countResearchMaterials(draft: MarketIntakeDraft): number {
+  const structured = draft.sources.filter((s) => s.role !== "PRODUCTION_ASSET").length;
   return (
     draft.keywords.length +
     draft.competitorAccounts.length +
@@ -175,7 +188,8 @@ export function countResearchMaterials(draft: MarketIntakeDraft): number {
     draft.customerQuestions.length +
     draft.commonPainPoints.length +
     draft.commonSellingPoints.length +
-    draft.marketHypotheses.length
+    draft.marketHypotheses.length +
+    structured
   );
 }
 
@@ -347,11 +361,14 @@ export type ManualMarketPreviewBody = {
   productBriefId?: string;
   collectedAt: string;
   items: Record<string, unknown>[];
+  intakeSources?: MarketSourceDraftEntry[];
+  researchRequested?: boolean;
 };
 
 /**
  * Map intake draft → MANUAL preview/confirm body.
  * Never invents metrics. Empty items allowed when acknowledged limited data.
+ * REFERENCE/OWN stay in intakeSources; PRODUCTION_ASSET excluded.
  */
 export function mapMarketIntakeDraftToManualPreview(
   draft: MarketIntakeDraft,
@@ -361,11 +378,16 @@ export function mapMarketIntakeDraftToManualPreview(
   const items: Record<string, unknown>[] = [];
   const platform = "douyin";
   const source = "MANUAL";
+  const seenKeywords = new Set<string>();
+  const seenCompetitors = new Set<string>();
+  const seenUrls = new Set<string>();
 
   for (const keyword of draft.keywords) {
+    seenKeywords.add(keyword);
     items.push({ kind: "KEYWORD", platform, source, collectedAt, keyword });
   }
   for (const account of draft.competitorAccounts) {
+    seenCompetitors.add(account.displayName);
     items.push({
       kind: "COMPETITOR",
       platform,
@@ -376,6 +398,7 @@ export function mapMarketIntakeDraftToManualPreview(
     });
   }
   for (const video of draft.competitorVideos) {
+    seenUrls.add(video.url);
     items.push({
       kind: "CONTENT",
       platform,
@@ -387,6 +410,7 @@ export function mapMarketIntakeDraftToManualPreview(
     });
   }
   for (const link of draft.publicLinks) {
+    seenUrls.add(link.url);
     items.push({
       kind: "CONTENT",
       platform,
@@ -453,11 +477,118 @@ export function mapMarketIntakeDraftToManualPreview(
     });
   }
 
+  // Structured MARKET_EVIDENCE only → items (bridge). REFERENCE/OWN stay out of market facts.
+  for (const entry of draft.sources) {
+    if (entry.role !== "MARKET_EVIDENCE") continue;
+    if (entry.sourceType === "KEYWORD" && entry.keyword && !seenKeywords.has(entry.keyword)) {
+      seenKeywords.add(entry.keyword);
+      items.push({ kind: "KEYWORD", platform, source, collectedAt, keyword: entry.keyword });
+      continue;
+    }
+    if (entry.sourceType === "COMPETITOR_NAME" && entry.competitorName && !seenCompetitors.has(entry.competitorName)) {
+      seenCompetitors.add(entry.competitorName);
+      items.push({
+        kind: "COMPETITOR",
+        platform: entry.platform || platform,
+        source,
+        collectedAt,
+        displayName: entry.competitorName,
+        ...(entry.url ? { profileUrl: entry.url } : {}),
+      });
+      continue;
+    }
+    if (entry.sourceType === "MANUAL_TEXT" && entry.text) {
+      items.push({
+        kind: "AUDIENCE_SIGNAL",
+        platform,
+        source,
+        collectedAt,
+        topic: entry.text.slice(0, 80),
+        signalType: "observation",
+        examples: [entry.text],
+      });
+      continue;
+    }
+    if (
+      (entry.sourceType === "DOUYIN_VIDEO_URL" ||
+        entry.sourceType === "DOUYIN_ACCOUNT_URL" ||
+        entry.sourceType === "DOUYIN_URL_UNKNOWN" ||
+        entry.sourceType === "WEB_URL" ||
+        entry.sourceType === "UPLOAD_VIDEO" ||
+        entry.sourceType === "UPLOAD_IMAGE" ||
+        entry.sourceType === "UPLOAD_SCREENSHOT" ||
+        entry.sourceType === "SPREADSHEET") &&
+      (entry.url || entry.canonicalUrl || entry.assetId)
+    ) {
+      const externalUrl = entry.canonicalUrl || entry.url;
+      if (externalUrl && seenUrls.has(externalUrl)) continue;
+      if (externalUrl) seenUrls.add(externalUrl);
+      items.push({
+        kind: "CONTENT",
+        platform: entry.platform || platform,
+        source,
+        collectedAt,
+        ...(externalUrl ? { externalUrl } : {}),
+        title: entry.label || entry.title || "市场资料（结构化来源）",
+        caption: entry.userNote || "结构化市场资料已记录",
+        ...(entry.assetId ? { assetId: entry.assetId } : {}),
+        metadata: { sourceType: entry.sourceType, role: entry.role, provenance: entry.provenance },
+      });
+    }
+  }
+
+  const intakeSources = draft.sources.filter((s) => s.role !== "PRODUCTION_ASSET");
+
   return {
     ...(options?.productBriefId ? { productBriefId: options.productBriefId } : {}),
     collectedAt,
     items,
+    intakeSources,
+    researchRequested: Boolean(draft.researchRequested),
   };
+}
+
+/** Detect URLs in chat text and return structured draft sources (role left to caller/UI). */
+export function extractUrlSourcesFromText(
+  text: string,
+  defaultRole: MarketSourceRole = "MARKET_EVIDENCE",
+): MarketSourceDraftEntry[] {
+  const matches = text.match(/https?:\/\/[^\s]+/gi) ?? [];
+  const out: MarketSourceDraftEntry[] = [];
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[),.;]+$/, "");
+    const classified = classifyMarketUrl(cleaned);
+    if (!classified.valid || !classified.canonicalUrl) continue;
+    out.push({
+      id: createSourceId(),
+      role: defaultRole,
+      sourceType: classified.sourceType,
+      platform: classified.platform,
+      url: classified.canonicalUrl,
+      canonicalUrl: classified.canonicalUrl,
+      provenance: "USER_PROVIDED",
+      capturedAt: new Date().toISOString(),
+      label: classified.sourceType === "WEB_URL" ? "网页链接" : undefined,
+    });
+  }
+  return out;
+}
+
+export function mergeExtractedUrlSources(
+  draft: MarketIntakeDraft,
+  text: string,
+): { draft: MarketIntakeDraft; added: number; duplicates: number } {
+  const extracted = extractUrlSourcesFromText(text, "MARKET_EVIDENCE");
+  let list = [...draft.sources];
+  let added = 0;
+  let duplicates = 0;
+  for (const entry of extracted) {
+    const result = upsertMarketSource(list, entry);
+    list = result.list;
+    if (result.created) added += 1;
+    else duplicates += 1;
+  }
+  return { draft: sanitizeMarketIntakeDraft({ ...draft, sources: list }), added, duplicates };
 }
 
 export function humanizeMarketIntakeConfirmError(error: unknown): string {
@@ -621,6 +752,8 @@ export function draftToTurnPayload(draft: MarketIntakeDraft): MarketIntakeDraftP
     commonPainPoints: clean.commonPainPoints,
     commonSellingPoints: clean.commonSellingPoints,
     marketHypotheses: clean.marketHypotheses,
+    sources: clean.sources,
+    researchRequested: clean.researchRequested,
     userAcknowledgedLimitedData: clean.userAcknowledgedLimitedData,
   };
 }

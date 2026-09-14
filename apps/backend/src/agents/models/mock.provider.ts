@@ -6,6 +6,7 @@ import {
   MARKET_INTELLIGENCE_AGENT_ID,
   MARKET_INTAKE_AGENT_ID,
   PRODUCT_INTAKE_AGENT_ID,
+  REFERENCE_ANALYSIS_AGENT_ID,
   SCRIPT_GENERATION_AGENT_ID,
 } from '../agent.types.js';
 import { MOCK_ACCOUNT_POSITIONING_OUTPUT } from '../definitions/account-positioning.fixture.js';
@@ -17,6 +18,7 @@ import {
 import { buildMockMarketInsightText } from '../definitions/market-intelligence.fixture.js';
 import { buildMockMarketIntakeText } from '../definitions/market-intake.fixture.js';
 import { buildMockProductIntakeText } from '../definitions/product-intake.fixture.js';
+import { buildMockReferenceAnalysisText } from '../definitions/reference-analysis.fixture.js';
 import { buildMockScriptOutput } from '../definitions/script-generation.fixture.js';
 import type { ScriptTargetDuration } from '../definitions/script-generation.types.js';
 import type { ModelGenerateRequest, ModelGenerateResult, ModelProvider } from './model.types.js';
@@ -71,7 +73,7 @@ function mockText(request: ModelGenerateRequest): string {
   ) {
     const duration = extractNumber(request.prompt, /目标时长[：:]\s*(\d+)/, 30);
     const allowed = [15, 30, 45, 60].includes(duration) ? duration : 30;
-    return JSON.stringify(buildMockScriptOutput(allowed as ScriptTargetDuration));
+    return JSON.stringify(buildMockScriptOutput(allowed as ScriptTargetDuration, request.prompt));
   }
   if (
     request.agentId === MARKET_INTELLIGENCE_AGENT_ID ||
@@ -96,6 +98,12 @@ function mockText(request: ModelGenerateRequest): string {
     request.task === MARKET_INTAKE_AGENT_ID
   ) {
     return buildMockMarketIntakeText(request.prompt);
+  }
+  if (
+    request.agentId === REFERENCE_ANALYSIS_AGENT_ID ||
+    request.task === REFERENCE_ANALYSIS_AGENT_ID
+  ) {
+    return buildMockReferenceAnalysisText(request.prompt);
   }
   return request.prompt;
 }

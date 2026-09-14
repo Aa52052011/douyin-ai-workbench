@@ -8,6 +8,7 @@ import {
   manualMetricsFingerprint,
   reconstructObservedAtSemantic,
   sameManualMetricsRequest,
+  sameManualMetricsContent,
 } from './publication-metrics.fingerprint.js';
 
 const metrics = {
@@ -77,6 +78,26 @@ describe('manual metrics fingerprint', () => {
         ...metrics,
         views: 999,
         observedAtSemantic: SERVER_NOW_SENTINEL,
+      }),
+    ).toBe(false);
+  });
+
+  it('matches content idempotency on stored observedAt even when createdAt is near now', () => {
+    const publicationId = '11111111-1111-4111-8111-111111111111';
+    const observedAt = new Date('2026-09-10T06:27:45.585Z');
+    const existing = {
+      ...metrics,
+      observedAt,
+      createdAt: observedAt,
+    };
+    expect(
+      sameManualMetricsContent(publicationId, existing, metrics, observedAt),
+    ).toBe(true);
+    expect(
+      sameManualMetricsRequest(publicationId, existing, {
+        publicationId,
+        ...metrics,
+        observedAtSemantic: incomingObservedAtSemantic(observedAt.toISOString()),
       }),
     ).toBe(false);
   });

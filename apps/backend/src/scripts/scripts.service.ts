@@ -21,7 +21,16 @@ import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { AccountMemoryService } from '../memory/account-memory.service.js';
+import { ReferenceIntelligenceService } from '../market/reference-intelligence.service.js';
 import { toPublicScript, type ScriptPublic } from './scripts.mapper.js';
+import {
+  INVALID_AUTOMATED_CONFIRMATION,
+  isBlockedScriptApprovalSource,
+  parseScriptApprovalSource,
+  type ScriptApprovalSource,
+} from './human-approval.js';
+import { applyInvalidAutomatedConfirmationCorrection } from './invalid-automated-confirmation.correction.js';
 
 const ALLOWED_PLAN_STATUS = new Set<ContentPlanStatus>([
   ContentPlanStatus.CONFIRMED,
@@ -33,6 +42,8 @@ export class ScriptsService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly agents: AgentsService,
+    private readonly memory: AccountMemoryService,
+    private readonly referenceIntelligence: ReferenceIntelligenceService,
   ) {}
 
   async list(
@@ -68,6 +79,8 @@ export class ScriptsService {
       topicId: string;
       targetDuration?: number;
       requirements?: string;
+      /** Explicit reference content ids only — never auto-selected. */
+      referenceIds?: string[];
     },
     meta: { requestId: string; locale?: string; workspaceHint?: string },
   ): Promise<ScriptPublic> {
@@ -125,6 +138,39 @@ export class ScriptsService {
     });
     const strategyContext = buildCompactStrategyContext(strategyRow?.payload);
 
+    let accountMemoryContext: Record<string, unknown> | undefined;
+    try {
+      accountMemoryContext = (await this.memory.getMemoryContext(auth, plan.projectId, {
+        workspaceHint: meta.workspaceHint,
+        current: {
+          topicTitle: topic.title,
+          contentPillar: topic.contentPillar,
+          contentAngle: topic.contentAngle,
+          hook: topic.hook,
+          topicId: topic.id,
+        },
+      })) as unknown as Record<string, unknown>;
+    } catch {
+      accountMemoryContext = undefined;
+    }
+
+    // Selection rule: only explicit referenceIds; never surprise-pull project history.
+    let referenceContext: Record<string, unknown> | undefined;
+    try {
+      const explicitIds = Array.isArray(input.referenceIds)
+        ? input.referenceIds.filter((id): id is string => typeof id === 'string')
+        : [];
+      if (explicitIds.length > 0) {
+        referenceContext = (await this.referenceIntelligence.buildReferenceContext(
+          auth,
+          plan.projectId,
+          { workspaceHint: meta.workspaceHint, referenceIds: explicitIds },
+        )) as unknown as Record<string, unknown>;
+      }
+    } catch {
+      referenceContext = undefined;
+    }
+
     const run = await this.agents.execute(
       auth,
       {
@@ -144,12 +190,22 @@ export class ScriptsService {
           contentPlanContext,
           previousScriptSummaries,
           ...(strategyContext ? { strategyContext } : {}),
+          ...(accountMemoryContext ? { accountMemoryContext } : {}),
+          ...(referenceContext ? { referenceContext } : {}),
         },
       },
       meta,
     );
 
     const output = run.output as ScriptOutput;
+    const referencePatternIds =
+      referenceContext && Array.isArray((referenceContext as { patterns?: unknown }).patterns)
+        ? ((referenceContext as { patterns: Array<{ id?: string }> }).patterns
+            .map((p) => p.id)
+            .filter((id): id is string => typeof id === 'string')
+            .slice(0, 10))
+        : [];
+    // Agent completion never confirms. V1 has no auto-approval mode.
     return this.createVersionedRow({
       tenantId: auth.tenantId,
       workspaceId,
@@ -158,7 +214,10 @@ export class ScriptsService {
       topicId: topic.id,
       title: output.title,
       content: concatNarration(output),
-      payload: output,
+      payload: {
+        ...output,
+        ...(referencePatternIds.length > 0 ? { referencePatternIds } : {}),
+      },
       topicSnapshot: topic,
       sourceAgentRunId: run.id,
     });
@@ -185,7 +244,16 @@ export class ScriptsService {
     return toPublicScript(updated);
   }
 
-  async confirm(auth: AuthContext, id: string, workspaceHint?: string): Promise<ScriptPublic> {
+  async confirm(
+    auth: AuthContext,
+    id: string,
+    workspaceHint?: string,
+    options?: { approvalSource?: ScriptApprovalSource | string },
+  ): Promise<ScriptPublic> {
+    const source = parseScriptApprovalSource(options?.approvalSource);
+    if (isBlockedScriptApprovalSource(source)) {
+      throw new AppError(ErrorCode.SCRIPT_CONFIRM_NOT_HUMAN);
+    }
     const current = await this.requireScript(auth, id, workspaceHint);
     if (current.status !== ScriptStatus.DRAFT) {
       throw new AppError(ErrorCode.SCRIPT_CONFLICT);
@@ -194,7 +262,27 @@ export class ScriptsService {
       where: { id_tenantId: { id: current.id, tenantId: auth.tenantId } },
       data: { status: ScriptStatus.CONFIRMED },
     });
+    void this.memory.refreshMemorySafe(auth, updated.projectId, 'SCRIPT_CONFIRMED', workspaceHint);
     return toPublicScript(updated);
+  }
+
+  /**
+   * Administrative correction for INVALID_AUTOMATED_CONFIRMATION.
+   * Not a user unconfirm API and not mounted on the HTTP controller.
+   */
+  async correctInvalidAutomatedConfirmation(
+    auth: AuthContext,
+    id: string,
+    workspaceHint?: string,
+  ): Promise<ScriptPublic> {
+    const current = await this.requireScript(auth, id, workspaceHint);
+    const { after } = await applyInvalidAutomatedConfirmationCorrection(this.prisma, {
+      scriptId: current.id,
+      tenantId: auth.tenantId,
+      reason: INVALID_AUTOMATED_CONFIRMATION,
+    });
+    void this.memory.refreshMemorySafe(auth, after.projectId, 'READ_STALE', workspaceHint);
+    return toPublicScript(after);
   }
 
   async archive(auth: AuthContext, id: string, workspaceHint?: string): Promise<ScriptPublic> {
@@ -290,7 +378,7 @@ export class ScriptsService {
             title: data.title,
             content: data.content,
             version,
-            status: ScriptStatus.DRAFT,
+            status: ScriptStatus.DRAFT, // never auto-confirm on create / agent completion
             payload: data.payload as unknown as Prisma.InputJsonValue,
             topicSnapshot: data.topicSnapshot as unknown as Prisma.InputJsonValue,
             sourceAgentRunId: data.sourceAgentRunId,

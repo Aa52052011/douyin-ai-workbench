@@ -45,6 +45,39 @@ describe('ffmpeg args', () => {
     expect(args.join(' ')).toContain('force_original_aspect_ratio=increase');
     expect(args.join(' ')).toContain('crop=1080:1920');
     expect(args.join(' ')).not.toContain('force_original_aspect_ratio=decrease');
-    expect(args.join(' ')).not.toContain('pad=1080:1920');
+    expect(args.join(' ')).toContain('-loop 1');
+  });
+
+  it('crops the top of landscape sources before COVER', () => {
+    const args = buildFfmpegComposeArgs({
+      scenes: [{ path: '/tmp/clip.mp4', duration: 3, kind: 'video', cropTopRatio: 0.14 }],
+      voicePath: '/tmp/voice.wav',
+      subtitlePath: '/tmp/captions.srt',
+      outputPath: '/tmp/output.mp4',
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      voiceDuration: 3,
+    });
+    expect(args.join(' ')).toContain('crop=iw:ih*(1-0.140):0:ih*0.140');
+  });
+
+  it('uses trim inputs for video clips instead of image loop', () => {
+    const args = buildFfmpegComposeArgs({
+      scenes: [
+        { path: '/tmp/clip.mp4', duration: 3, kind: 'video', sourceStartSec: 0 },
+        { path: '/tmp/still.png', duration: 2, kind: 'image' },
+      ],
+      voicePath: '/tmp/voice.wav',
+      subtitlePath: '/tmp/captions.srt',
+      outputPath: '/tmp/output.mp4',
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      voiceDuration: 5,
+    });
+    expect(args.join(' ')).toContain('/tmp/clip.mp4');
+    expect(args.join(' ')).toContain('-t 3');
+    expect(args.filter((item) => item === '-loop').length).toBe(1);
   });
 });

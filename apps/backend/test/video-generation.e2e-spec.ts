@@ -277,6 +277,31 @@ describe('Video generation (e2e)', () => {
       .expect(200);
     expect(recovered.body.status).toBe('COMPLETED');
     expect(recovered.body.sourceJobId).not.toBe(oldJobId);
+
+    await request(app.getHttpServer())
+      .post(`/videos/${pending.body.id}/retry`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .expect(409);
+
+    const regenerated = await request(app.getHttpServer())
+      .post('/videos')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ scriptId: script.id })
+      .expect(201);
+    expect(regenerated.body.id).not.toBe(pending.body.id);
+    const original = await request(app.getHttpServer())
+      .get(`/videos/${pending.body.id}`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .expect(200);
+    expect(original.body.status).toBe('COMPLETED');
+    expect(original.body.outputAssetId).toBe(recovered.body.outputAssetId);
+    const firstJob = await prisma.job.findFirst({ where: { id: recovered.body.sourceJobId, tenantId: user.tenantId } });
+    const secondJob = await prisma.job.findFirst({ where: { id: regenerated.body.sourceJobId, tenantId: user.tenantId } });
+    const firstGen = (firstJob?.input as { generationVersion?: string } | null)?.generationVersion;
+    const secondGen = (secondJob?.input as { generationVersion?: string } | null)?.generationVersion;
+    expect(firstGen).toBeTruthy();
+    expect(secondGen).toBeTruthy();
+    expect(secondGen).not.toBe(firstGen);
   });
 
   it('returns 404 across tenants and workspaces', async () => {

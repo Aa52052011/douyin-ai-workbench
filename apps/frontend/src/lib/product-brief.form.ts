@@ -3,6 +3,7 @@ import {
   PRODUCT_BRIEF_LIMITS,
   type ProductBriefPayload,
 } from "./product-brief.types";
+import { normalizeBusinessGoal } from "./business-goal";
 
 export type ProductBriefFormState = {
   productName: string;
@@ -91,6 +92,7 @@ export function payloadFromForm(form: ProductBriefFormState): ProductBriefPayloa
     productName: form.productName.trim(),
     industry: form.industry.trim(),
     businessGoal: form.businessGoal.trim(),
+    goalCode: normalizeBusinessGoal({ businessGoal: form.businessGoal.trim() }).goalCode,
   };
   const category = optionalText(form.category, PRODUCT_BRIEF_LIMITS.category);
   const brand = optionalText(form.brand, PRODUCT_BRIEF_LIMITS.brand);

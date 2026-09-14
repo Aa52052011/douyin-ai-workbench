@@ -2,8 +2,14 @@ import { Module } from '@nestjs/common';
 import { resolveComposeProviderId } from './ffmpeg/ffmpeg-config.js';
 import { ColorBackgroundImageProvider } from './providers/color-background-image.provider.js';
 import { COMPOSE_PROVIDER } from './providers/compose.token.js';
+import { DIGITAL_HUMAN_PROVIDER } from './providers/digital-human.types.js';
+import { DisabledDigitalHumanProvider } from './providers/disabled-digital-human.provider.js';
+import { DisabledVoiceCloneProvider } from './providers/disabled-voice-clone.provider.js';
 import { IMAGE_PROVIDER } from './providers/image.token.js';
+import { MockDigitalHumanProvider } from './providers/mock-digital-human.provider.js';
+import { MockVoiceCloneProvider } from './providers/mock-voice-clone.provider.js';
 import { TTS_PROVIDER } from './providers/tts.token.js';
+import { VOICE_CLONE_PROVIDER } from './providers/voice-clone.types.js';
 import { FfmpegComposeProvider } from './providers/ffmpeg-compose.provider.js';
 import { MockComposeProvider } from './providers/mock-compose.provider.js';
 import { MockSubtitleProvider } from './providers/mock-subtitle.provider.js';
@@ -18,6 +24,8 @@ import { assertMiniMaxTtsConfigured, TTS_PROVIDER_MINIMAX } from './tts/minimax-
 import { assertOpenAiTtsConfigured, resolveTtsProviderId, TTS_PROVIDER_OPENAI } from './tts/tts-config.js';
 import { IMAGE_PROVIDER_WANX, resolveImageProviderId } from './visual/visual-config.js';
 import { assertWanxImageConfigured } from './visual/wanx-config.js';
+import { DIGITAL_HUMAN_PROVIDER_MOCK, resolveDigitalHumanProviderId } from './dh/digital-human-config.js';
+import { VOICE_CLONE_PROVIDER_MOCK, resolveVoiceCloneProviderId } from './voice-clone/voice-clone-config.js';
 
 @Module({
   providers: [
@@ -32,6 +40,10 @@ import { assertWanxImageConfigured } from './visual/wanx-config.js';
     FfmpegComposeProvider,
     ColorBackgroundImageProvider,
     WanxImageProvider,
+    DisabledDigitalHumanProvider,
+    MockDigitalHumanProvider,
+    DisabledVoiceCloneProvider,
+    MockVoiceCloneProvider,
     {
       provide: IMAGE_PROVIDER,
       useFactory: (color: ColorBackgroundImageProvider, wanx: WanxImageProvider) => {
@@ -66,6 +78,28 @@ import { assertWanxImageConfigured } from './visual/wanx-config.js';
       },
       inject: [MockTtsProvider, OpenAiTtsProvider, MiniMaxTtsProvider],
     },
+    {
+      provide: DIGITAL_HUMAN_PROVIDER,
+      useFactory: (disabled: DisabledDigitalHumanProvider, mock: MockDigitalHumanProvider) => {
+        const id = resolveDigitalHumanProviderId();
+        if (id === DIGITAL_HUMAN_PROVIDER_MOCK && process.env.NODE_ENV === 'test') {
+          return mock;
+        }
+        return disabled;
+      },
+      inject: [DisabledDigitalHumanProvider, MockDigitalHumanProvider],
+    },
+    {
+      provide: VOICE_CLONE_PROVIDER,
+      useFactory: (disabled: DisabledVoiceCloneProvider, mock: MockVoiceCloneProvider) => {
+        const id = resolveVoiceCloneProviderId();
+        if (id === VOICE_CLONE_PROVIDER_MOCK && process.env.NODE_ENV === 'test') {
+          return mock;
+        }
+        return disabled;
+      },
+      inject: [DisabledVoiceCloneProvider, MockVoiceCloneProvider],
+    },
   ],
   exports: [
     StorageService,
@@ -81,6 +115,8 @@ import { assertWanxImageConfigured } from './visual/wanx-config.js';
     COMPOSE_PROVIDER,
     TTS_PROVIDER,
     IMAGE_PROVIDER,
+    DIGITAL_HUMAN_PROVIDER,
+    VOICE_CLONE_PROVIDER,
   ],
 })
 export class MediaModule {}

@@ -7,10 +7,14 @@ import { ConfidenceActionCard } from "../../../../../../components/confidence-ac
 import { ContentPlanningCurrentFocus } from "../../../../../../components/content-planning-current-focus";
 import { ContentPlanningForm } from "../../../../../../components/content-planning-form";
 import { ContentPlanningHistory } from "../../../../../../components/content-planning-history";
+import { ContentPlanningTopics } from "../../../../../../components/content-planning-topics";
 import { ContentPlanningWeekOverview } from "../../../../../../components/content-planning-week-overview";
 import { EmptyState } from "../../../../../../components/empty-state";
 import { ExplanationDetails } from "../../../../../../components/explanation-details";
 import { PageHeader } from "../../../../../../components/page-header";
+import { ProductionContextHeaderV3, WorkflowFooterV3 } from "../../../../../../components/production-context-header";
+import { AITaskState } from "../../../../../../components/ui/ai-task-state";
+import { ProductErrorState } from "../../../../../../components/ui/error-state";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { listCampaignStrategies } from "../../../../../../lib/campaign-strategy.api";
 import type { CampaignStrategyRecord } from "../../../../../../lib/campaign-strategy.types";
@@ -36,7 +40,6 @@ import {
   canGeneratePlan,
   canGenerateScript,
   emptyPlanningForm,
-  expectedTopicCount,
   humanizePlanningError,
   latestPlan,
   positioningHref,
@@ -279,8 +282,17 @@ function ContentPlansPageInner() {
     <div>
       <PageHeader
         title={isSevenDay ? "本期 7 天内容规划" : "本期内容规划"}
-        description="围绕当前推广策略，为你安排这一周期的内容方向。你可以按顺序制作，也可以查看任意一条。"
-        breadcrumb={`项目 / ${project.name} / 内容计划`}
+        description="看清这一周期要发什么、为什么发、优先做哪条。"
+        breadcrumb={[
+          { label: "项目", href: "/dashboard/projects" },
+          { label: project.name, href: `/dashboard/projects/${projectId}` },
+          { label: "内容计划" },
+        ]}
+      />
+      <ProductionContextHeaderV3
+        projectName={project.name}
+        stageId="planning"
+        completed={displayPlan && canGenerateScript(displayPlan.status) ? ["positioning", "planning"] : ["positioning"]}
       />
 
       {loading ? (
@@ -304,7 +316,7 @@ function ContentPlansPageInner() {
       {!loading && !loadError && positioning.length === 0 ? (
         <EmptyState
           title="还没有账号定位"
-          description="先生成账号定位，才能创建内容计划。"
+            description="先完成账号定位，才能创建内容计划。"
           primaryAction={{ label: "去生成账号定位", href: positioningHref(projectId) }}
         />
       ) : null}
@@ -318,14 +330,10 @@ function ContentPlansPageInner() {
           ) : null}
 
           {pending && editing ? (
-            <p className="text-sm text-neutral-700" aria-live="polite">
-              AI 正在生成内容计划… 预计生成 {expectedTopicCount(form.planningDays, form.postsPerDay)} 个选题
-            </p>
+            <AITaskState state="RUNNING" stages={["正在规划内容", "正在整理选题", "正在生成计划"]} />
           ) : null}
           {actionError ? (
-            <p className="text-sm text-red-600" role="alert">
-              {actionError}
-            </p>
+            <ProductErrorState title="内容计划没有完成" humanMessage={actionError} recoveryAction="稍后重试" />
           ) : null}
 
           {!latest && !editing ? (
@@ -343,6 +351,7 @@ function ContentPlansPageInner() {
               strategyOptions={strategyOptions}
               pending={pending}
               noStrategyHint={!form.strategyId}
+              positioningSummary={positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning}
               onChange={setForm}
               onSubmit={() => void generate()}
               onCancel={latest ? () => setEditing(false) : undefined}
@@ -405,6 +414,15 @@ function ContentPlansPageInner() {
                 onSelect={setUserSelectedTopicId}
               />
 
+              {displayPlan && displayView ? (
+                <ContentPlanningTopics
+                  view={displayView}
+                  projectId={projectId}
+                  planId={displayPlan.id}
+                  canScript={canGenerateScript(displayPlan.status)}
+                />
+              ) : null}
+
               {focusTopic && displayPlan ? (
                 <ContentPlanningCurrentFocus
                   projectId={projectId}
@@ -422,7 +440,7 @@ function ContentPlansPageInner() {
                   continueLabel={
                     confirmedMode && confirmFocusHref
                       ? nextAction.kind === "SCRIPT"
-                        ? "开始制作脚本"
+                        ? "为这个选题生成脚本"
                         : nextAction.label
                       : undefined
                   }
@@ -470,7 +488,7 @@ function ContentPlansPageInner() {
                     disabled={pending}
                     onClick={() => void confirm()}
                   >
-                    确认本期内容规划
+                    确认内容计划
                   </button>
                 ) : null}
                 {confirmedMode && confirmFocusHref ? (
@@ -500,7 +518,7 @@ function ContentPlansPageInner() {
               </div>
 
               {pendingConfirmMode ? (
-                <p className="text-sm text-neutral-600">确认后，将直接进入「开始制作第 1 条脚本」，无需再回脚本页找计划。</p>
+                <p className="text-sm text-neutral-600">确认后，将进入脚本阶段。回看定位不会清空这份计划。</p>
               ) : null}
 
               {regenerateAsk ? (
@@ -558,6 +576,7 @@ function ContentPlansPageInner() {
           />
         </div>
       ) : null}
+      <WorkflowFooterV3 projectId={projectId} stageId="planning" />
     </div>
   );
 }

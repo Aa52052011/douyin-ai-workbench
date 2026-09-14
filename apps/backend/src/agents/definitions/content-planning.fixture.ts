@@ -28,8 +28,8 @@ export function buildMockContentPlanOutput(options?: {
         id: randomUUID(),
         dayIndex: day,
         title: strategyHint
-          ? `第${day}天选题${slot}：${pillar.name}·${strategyHint}`
-          : `第${day}天选题${slot}：${pillar.name}落地法`,
+          ? `本批第${topics.length + 1}条：${pillar.name}·${strategyHint}`
+          : `本批第${topics.length + 1}条：${pillar.name}落地法`,
         hook: `新人最容易在${pillar.name}上踩的坑，不是你想的那样`,
         contentPillar: pillar.name,
         targetAudience: MOCK_ACCOUNT_POSITIONING_OUTPUT.targetAudience.description,
@@ -58,7 +58,7 @@ export function buildMockContentPlanOutput(options?: {
   })).filter((item) => item.topicCount > 0);
 
   return {
-    title: `${planningDays}天职场成长内容规划`,
+    title: `本批职场成长内容规划`,
     summary: `按账号定位生成 ${total} 条选题，覆盖认知纠偏、方法演示与案例复盘。`,
     planningDays,
     postsPerDay,

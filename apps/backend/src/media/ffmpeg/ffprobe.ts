@@ -10,7 +10,7 @@ export type FfprobeSummary = {
   size?: number;
 };
 
-function parseFrameRate(raw: string | undefined): number | undefined {
+export function parseFfprobeFrameRate(raw: string | undefined): number | undefined {
   if (!raw || raw === '0/0') {
     return undefined;
   }
@@ -19,7 +19,7 @@ function parseFrameRate(raw: string | undefined): number | undefined {
     return undefined;
   }
   if (!denominator) {
-    return numerator;
+    return numerator > 0 && Number.isFinite(numerator) ? numerator : undefined;
   }
   const fps = numerator / denominator;
   return Number.isFinite(fps) && fps > 0 ? fps : undefined;
@@ -53,7 +53,7 @@ export function parseFfprobeJson(raw: string): FfprobeSummary | null {
       height: video.height,
       videoCodec: video.codec_name,
       audioCodec: audio.codec_name,
-      fps: parseFrameRate(video.avg_frame_rate) ?? parseFrameRate(video.r_frame_rate),
+      fps: parseFfprobeFrameRate(video.avg_frame_rate) ?? parseFfprobeFrameRate(video.r_frame_rate),
       size: Number.isFinite(size) && size > 0 ? size : undefined,
     };
   } catch {

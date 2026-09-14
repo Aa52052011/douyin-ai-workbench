@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { AuthzModule } from '../authz/authz.module.js';
 import { MetricsModule } from '../metrics/metrics.module.js';
+import { UsageModule } from '../usage/usage.module.js';
 import { AgentsController } from './agent.controller.js';
 import { AgentEngine } from './agent.engine.js';
 import { AgentRegistry } from './agent.registry.js';
@@ -11,13 +12,14 @@ import { AiEngineExecutor } from './executors/ai-engine.executor.js';
 import { InProcessAgentExecutor } from './executors/in-process.executor.js';
 import { MockModelProvider } from './models/mock.provider.js';
 import { ModelRouter } from './models/model.router.js';
+import { ModelRouteHealthRegistry } from './models/model-route-health.js';
 import { RealModelProvider } from './models/real.provider.js';
 import { PromptRegistry } from './prompts/prompt.registry.js';
 import { ToolRegistry } from './tools/tool.registry.js';
 import { EmptyTrendDataProvider } from './trends/empty-trend-data.provider.js';
 
 @Module({
-  imports: [AuthModule, AuthzModule, MetricsModule],
+  imports: [AuthModule, AuthzModule, MetricsModule, UsageModule],
   controllers: [AgentsController],
   providers: [
     AgentRegistry,
@@ -26,6 +28,7 @@ import { EmptyTrendDataProvider } from './trends/empty-trend-data.provider.js';
     EmptyTrendDataProvider,
     MockModelProvider,
     RealModelProvider,
+    ModelRouteHealthRegistry,
     ModelRouter,
     InProcessAgentExecutor,
     AgentsService,

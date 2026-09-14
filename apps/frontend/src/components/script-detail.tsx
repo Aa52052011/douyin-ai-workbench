@@ -1,3 +1,4 @@
+import { formatDurationSeconds } from "../lib/ui-labels";
 import type { ScriptView, TopicSourceView } from "../lib/script.types";
 
 export function ScriptDetail({
@@ -16,10 +17,16 @@ export function ScriptDetail({
       <header className="space-y-1">
         <h2 className="text-lg font-medium break-words">{view.title}</h2>
         <p className="text-sm text-neutral-500">
-          {[typeof version === "number" ? `版本 ${version}` : "", statusLabel, `${view.totalDuration} 秒`, `约 ${view.estimatedWordCount} 字`]
+          {[
+            typeof version === "number" ? `版本 ${version}` : "",
+            statusLabel,
+            formatDurationSeconds(view.totalDuration),
+            `约 ${view.estimatedWordCount} 字`,
+          ]
             .filter(Boolean)
             .join(" · ")}
         </p>
+        <p className="text-xs text-neutral-500">系统已结合本批前后内容和账号历史，避免重复。</p>
       </header>
       {source ? (
         <section className="rounded-lg bg-neutral-50 px-3 py-3 text-sm">
@@ -46,7 +53,7 @@ export function ScriptDetail({
         </div>
       </section>
       <Field label="结尾" value={view.ending} />
-      <Field label="CTA" value={view.cta} />
+      <Field label="希望观众下一步做什么" value={view.cta} />
       <Field label="配音风格" value={view.voiceStyle} />
       <Field label="视觉风格" value={view.visualStyle} />
       {view.productionNotes.length > 0 ? (

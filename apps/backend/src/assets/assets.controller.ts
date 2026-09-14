@@ -42,6 +42,15 @@ export class AssetsController {
     return this.assets.list(auth, query, workspaceHint);
   }
 
+  @Get('library')
+  listLibrary(
+    @CurrentUser() auth: AuthContext,
+    @Query() query: ListAssetsQueryDto,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.assets.listLibrary(auth, query, workspaceHint);
+  }
+
   @Post()
   @RequirePermission(Permission.PROJECT_UPDATE)
   init(
@@ -50,6 +59,33 @@ export class AssetsController {
     @Headers('x-workspace-id') workspaceHint?: string,
   ) {
     return this.assets.init(auth, dto, workspaceHint);
+  }
+
+  @Post('upload')
+  @RequirePermission(Permission.PROJECT_UPDATE)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: MEDIA_MAX_UPLOAD_BYTES },
+    }),
+  )
+  uploadOneShot(
+    @CurrentUser() auth: AuthContext,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+    @Body()
+    body: { projectId: string; referenceOnly?: string; rightsConfirmed?: string },
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.assets.uploadLibraryFile(
+      auth,
+      {
+        projectId: body.projectId,
+        file,
+        referenceOnly: body.referenceOnly === 'true' || body.referenceOnly === '1',
+        rightsConfirmed: body.rightsConfirmed === 'true' || body.rightsConfirmed === '1',
+      },
+      workspaceHint,
+    );
   }
 
   @Get(':id/content')
@@ -63,6 +99,15 @@ export class AssetsController {
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${file.filename}"`);
     res.send(file.body);
+  }
+
+  @Get(':id/eligibility')
+  eligibility(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.assets.eligibilityFor(auth, id, workspaceHint);
   }
 
   @Put(':id/content')

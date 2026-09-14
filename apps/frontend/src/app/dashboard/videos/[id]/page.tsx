@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ProductionPlanPanel } from "../../../../components/production-plan-panel";
 import { useAuth } from "../../../../lib/auth-context";
 import { api } from "../../../../lib/api";
 import type { Video } from "../../../../lib/types";
@@ -81,11 +82,18 @@ export default function VideoDetailPage() {
         <p>输出 Asset：{video.outputAssetId ?? "-"}</p>
         <p>Job：{video.sourceJobId ?? "-"}</p>
         <p>脚本：{video.scriptId ?? "-"}</p>
-        <p>分辨率：{video.width}×{video.height} · {video.duration}s</p>
-        <p>输出素材：{video.outputAsset ? `${video.outputAsset.type} / ${video.outputAsset.status}` : "-"}</p>
-        <p>生成配置：{video.job?.input ? JSON.stringify(video.job.input) : "-"}</p>
+        <p>
+          分辨率：{video.width}×{video.height} · {video.duration}s
+        </p>
+        <p>
+          输出素材：
+          {video.outputAsset ? `${video.outputAsset.type} / ${video.outputAsset.status}` : "-"}
+        </p>
         {err?.code ? <p>错误：{err.code}</p> : null}
       </section>
+
+      {accessToken ? <ProductionPlanPanel videoId={video.id} accessToken={accessToken} /> : null}
+
       {video.status === "FAILED" ? (
         <button className="rounded border px-3 py-1 text-sm" disabled={busy} onClick={() => void retry()}>
           Retry

@@ -4,6 +4,7 @@ import type { AuthContext } from '../auth/auth.types.js';
 import { resolveWorkspaceId } from '../authz/workspace-context.js';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { isUuid } from '../common/ids.js';
+import { UsageMeteringService } from '../usage/usage-metering.service.js';
 
 const publicSelect = {
   id: true,
@@ -19,7 +20,10 @@ const publicSelect = {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly metering: UsageMeteringService,
+  ) {}
 
   list(auth: AuthContext, workspaceHint?: string) {
     const workspaceId = resolveWorkspaceId(auth, workspaceHint);
@@ -52,6 +56,12 @@ export class ProjectsService {
       throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
     }
     return project;
+  }
+
+  async getUsageSummary(auth: AuthContext, id: string, workspaceHint?: string) {
+    await this.getById(auth, id, workspaceHint);
+    const summary = await this.metering.getProjectUsageSummary(auth.tenantId, id);
+    return this.metering.toPublicSummary(summary);
   }
 
   create(

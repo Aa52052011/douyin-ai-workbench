@@ -43,6 +43,9 @@ export type VideoProductionPlan = {
     language: string;
     speed: number;
     text: string;
+    resolvedVoiceId?: string;
+    voiceProfileId?: string;
+    voiceType?: 'SYSTEM' | 'CUSTOM' | 'CLONED';
   };
   scenes: ProductionScene[];
   audio: {
@@ -67,9 +70,10 @@ export type VideoGenerationConfig = {
   resolution?: string;
   targetDuration?: number;
   requirements?: string;
+  preferredVoiceId?: string;
 };
 
-export type PipelineStageName = 'visual' | 'voice' | 'subtitle' | 'compose';
+export type PipelineStageName = 'visual' | 'voice' | 'subtitle' | 'compose' | 'quality_check' | 'repair';
 
 export type VisualSceneCheckpointStatus =
   | 'pending'
@@ -128,6 +132,9 @@ export type JobPipelineOutput = {
     voiceDuration?: number;
     composeDuration?: number;
   };
+  materialResolution?: import('./material-resolve.types.js').MaterialResolutionSnapshot;
+  editingTimeline?: import('./editing-timeline.js').EditingTimelineV1;
+  qualityGate?: import('../quality/quality.types.js').QualityCheckpoint;
   final?: {
     assetId: string;
     duration: number;

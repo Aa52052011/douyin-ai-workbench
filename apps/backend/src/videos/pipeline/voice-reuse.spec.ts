@@ -62,7 +62,22 @@ describe('voice-reuse', () => {
     expect(await isReusableVoiceAsset(ctx(), asset as never)).toBe(false);
   });
 
-  it('returns newest compatible READY voice', async () => {
+  it('rejects different resolvedVoiceId', async () => {
+    const asset = {
+      id: 'a',
+      type: AssetType.AUDIO,
+      status: AssetStatus.READY,
+      deletedAt: null,
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      workspaceId: '22222222-2222-4222-8222-222222222222',
+      projectId: '33333333-3333-4333-8333-333333333333',
+      storageKey: 'k',
+      metadata: { videoId: VIDEO, generationVersion: GEN, resolvedVoiceId: 'sys.calm' },
+    };
+    expect(await isReusableVoiceAsset(ctx(), asset as never)).toBe(false);
+  });
+
+  it('reuses when resolvedVoiceId matches default', async () => {
     const good = {
       id: 'voice-good',
       type: AssetType.AUDIO,

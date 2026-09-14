@@ -9,6 +9,7 @@ import { MarketIntakeDraftPanel } from "../../../../../../components/intake/mark
 import { MarketIntakeStatusBadge } from "../../../../../../components/intake/market-intake-status-badge";
 import { MarketImportWizard } from "../../../../../../components/market-import-wizard";
 import { MarketResearchHistory } from "../../../../../../components/market-research-history";
+import { ReferenceIntelligencePanel } from "../../../../../../components/intake/reference-intelligence-panel";
 import { PageHeader } from "../../../../../../components/page-header";
 import { useAuth } from "../../../../../../lib/auth-context";
 import {
@@ -24,6 +25,7 @@ import {
   humanizeMarketIntakeConfirmError,
   loadMarketIntakeSession,
   mapMarketIntakeDraftToManualPreview,
+  mergeExtractedUrlSources,
   patchMarketIntakeDraft,
   productBriefHasSeedKeywords,
   researchSummaryLabel,
@@ -181,15 +183,30 @@ export default function MarketResearchPage() {
   function handleSend(content: string) {
     if (!session || turnPending || pending) return;
     const now = new Date().toISOString();
+    const merged = mergeExtractedUrlSources(session.draft, content);
     const userMessage = {
       id: createMessageId(),
       role: "user" as const,
       content,
       createdAt: now,
     };
+    const assistantNote =
+      merged.added > 0
+        ? {
+            id: createMessageId(),
+            role: "assistant" as const,
+            content:
+              merged.duplicates > 0
+                ? `已识别 ${merged.added} 条链接并记为市场研究资料草稿；${merged.duplicates} 条已存在。可在右侧改用途（爆款参考 / 我的历史内容）。`
+                : `已识别 ${merged.added} 条链接并记为市场研究资料草稿。可在右侧改用途（爆款参考 / 我的历史内容）。`,
+            createdAt: now,
+            localKind: "LOCAL_PLACEHOLDER_REPLY" as const,
+          }
+        : null;
     const withUser: MarketIntakeSession = {
       ...session,
-      messages: [...session.messages, userMessage],
+      draft: merged.draft,
+      messages: [...session.messages, userMessage, ...(assistantNote ? [assistantNote] : [])],
       active: true,
       updatedAt: now,
     };
@@ -515,6 +532,8 @@ export default function MarketResearchPage() {
                 pending={pending || turnPending}
                 onChangeDraft={updateDraft}
                 onConfirm={() => void confirmGuided()}
+                projectId={projectId}
+                accessToken={accessToken ?? undefined}
               />
             }
           />
@@ -536,6 +555,10 @@ export default function MarketResearchPage() {
             void refreshList();
           }}
         />
+      ) : null}
+
+      {accessToken ? (
+        <ReferenceIntelligencePanel projectId={projectId} accessToken={accessToken} />
       ) : null}
     </div>
   );

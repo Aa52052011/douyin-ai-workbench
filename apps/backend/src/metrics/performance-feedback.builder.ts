@@ -121,8 +121,8 @@ export function buildPerformanceFeedback(input: {
     }
   }
 
-  const positiveSignals = takeSignals(performance, POSITIVE_SET, MAX_POSITIVE_SIGNALS);
-  const cautionSignals = takeSignals(performance, CAUTION_SET, MAX_CAUTION_SIGNALS);
+  const positiveSignals = takeSignals(performance, POSITIVE_SET, MAX_POSITIVE_SIGNALS, 1);
+  const cautionSignals = takeSignals(performance, CAUTION_SET, MAX_CAUTION_SIGNALS, 1);
   const dataQualitySignals = takeSignals(quality, QUALITY_SET, MAX_DATA_QUALITY_SIGNALS, 1);
   const seenCodes = new Set([...performance.keys()]);
   const inconsistentPerformance = CONFLICTING_INSIGHT_PAIRS.some(

@@ -13,6 +13,7 @@ import {
   mergeMarketIntakeDraft,
   sanitizeMarketIntakeDraftPatch,
   sanitizeMarketIntakeSuggestions,
+  sanitizeMarketIntakeUserDraft,
 } from './market-intake.patch.js';
 import {
   MARKET_INTAKE_LIMITS,
@@ -248,4 +249,5 @@ export {
   getMarketIntakeReadinessFromDraft,
   mergeMarketIntakeDraft,
   sanitizeMarketIntakeDraftPatch,
+  sanitizeMarketIntakeUserDraft,
 };

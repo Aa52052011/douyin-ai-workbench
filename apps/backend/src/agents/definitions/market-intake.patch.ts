@@ -226,6 +226,45 @@ const STRING_MAX: Record<string, number> = {
   marketHypotheses: MARKET_INTAKE_LIMITS.hypotheses,
 };
 
+/**
+ * User-submitted draft (UI / legacy clients): map aliases and drop unknown keys.
+ * LLM draftPatch still uses sanitizeMarketIntakeDraftPatch (throw on unknown).
+ */
+export function coerceMarketIntakeUserDraft(raw: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+  if (next.competitorAccounts == null && next.competitors != null) {
+    next.competitorAccounts = next.competitors;
+  }
+  if (next.publicLinks == null) {
+    if (typeof next.referenceUrl === 'string' && next.referenceUrl.trim()) {
+      next.publicLinks = [{ url: next.referenceUrl.trim() }];
+    } else if (Array.isArray(next.referenceUrls)) {
+      next.publicLinks = next.referenceUrls;
+    }
+  }
+  delete next.competitors;
+  delete next.referenceUrl;
+  delete next.referenceUrls;
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(next)) {
+    if (ALLOWED.has(key)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+export function sanitizeMarketIntakeUserDraft(raw: unknown): MarketIntakeDraft {
+  if (raw === undefined || raw === null) {
+    return {};
+  }
+  if (!isRecord(raw)) {
+    throw new AgentError(ErrorCode.AGENT_INVALID_OUTPUT);
+  }
+  rejectPrototypeKeys(raw);
+  return sanitizeMarketIntakeDraftPatch(coerceMarketIntakeUserDraft(raw));
+}
+
 /** Server-side allowlist sanitizer for LLM draftPatch. Never Object.assign raw. */
 export function sanitizeMarketIntakeDraftPatch(raw: unknown): MarketIntakeDraft {
   if (raw === undefined || raw === null) {

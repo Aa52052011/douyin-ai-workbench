@@ -8,6 +8,15 @@ import { CompositionStage } from './pipeline/stages/compose.stage.js';
 import { SubtitleGenerationStage } from './pipeline/stages/subtitle.stage.js';
 import { VisualGenerationStage } from './pipeline/stages/visual.stage.js';
 import { VoiceGenerationStage } from './pipeline/stages/voice.stage.js';
+import {
+  COMPOSITION_STAGE,
+  SUBTITLE_GENERATION_STAGE,
+  VISUAL_GENERATION_STAGE,
+  VOICE_GENERATION_STAGE,
+} from './pipeline/stage-providers.js';
+import { QualityCheckService } from './quality/quality-check.service.js';
+import { QualityRepairService } from './quality/quality-repair.service.js';
+import { QualityGateService } from './quality/quality-gate.service.js';
 import { VideoGenerationService } from './video-generation.service.js';
 
 @Module({
@@ -17,6 +26,13 @@ import { VideoGenerationService } from './video-generation.service.js';
     VoiceGenerationStage,
     SubtitleGenerationStage,
     CompositionStage,
+    { provide: VISUAL_GENERATION_STAGE, useExisting: VisualGenerationStage },
+    { provide: VOICE_GENERATION_STAGE, useExisting: VoiceGenerationStage },
+    { provide: SUBTITLE_GENERATION_STAGE, useExisting: SubtitleGenerationStage },
+    { provide: COMPOSITION_STAGE, useExisting: CompositionStage },
+    QualityCheckService,
+    QualityRepairService,
+    QualityGateService,
     VideoGenerationService,
     JobProcessor,
   ],

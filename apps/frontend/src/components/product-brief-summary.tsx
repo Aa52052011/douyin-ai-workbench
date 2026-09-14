@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatBusinessGoalDetail, formatBusinessGoalDisplay, normalizeBusinessGoal } from "../lib/business-goal";
 import { PRODUCT_BRIEF_FIELD_LABELS, type ProductBriefPayload } from "../lib/product-brief.types";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -65,7 +66,26 @@ export function ProductBriefSummary({ payload }: { payload: ProductBriefPayload 
       {goals ? (
         <Section title="推广目标">
           <dl>
-            <Row label={PRODUCT_BRIEF_FIELD_LABELS.businessGoal} value={payload.businessGoal} />
+            {payload.businessGoal ? (
+              <div className="grid gap-1 py-1 sm:grid-cols-[8rem_1fr]">
+                <dt className="text-sm text-neutral-500">{PRODUCT_BRIEF_FIELD_LABELS.businessGoal}</dt>
+                <dd className="whitespace-pre-wrap break-words text-sm">
+                  {(() => {
+                    const goal = normalizeBusinessGoal({
+                      businessGoal: payload.businessGoal,
+                      goalCode: payload.goalCode,
+                    });
+                    const detail = formatBusinessGoalDetail(goal);
+                    return (
+                      <>
+                        <p>{formatBusinessGoalDisplay(goal)}</p>
+                        {detail ? <p className="mt-1 text-neutral-600">{detail}</p> : null}
+                      </>
+                    );
+                  })()}
+                </dd>
+              </div>
+            ) : null}
             <Row label={PRODUCT_BRIEF_FIELD_LABELS.conversionGoal} value={payload.conversionGoal} />
             <Row label={PRODUCT_BRIEF_FIELD_LABELS.priceRange} value={payload.priceRange} />
           </dl>

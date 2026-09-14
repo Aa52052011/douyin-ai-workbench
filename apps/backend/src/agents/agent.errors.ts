@@ -29,14 +29,25 @@ const NON_RETRYABLE_CODES = new Set<ErrorCodeValue>([
   ErrorCode.SCRIPT_CONFLICT,
 ]);
 
+export const MODEL_BUSY_USER_MESSAGE = 'AI 服务暂时繁忙，请稍后重试。';
+
 const NETWORK_RE = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|fetch failed|socket hang up/i;
+
+export type AgentErrorDetails = {
+  httpStatus?: number;
+  networkCode?: string;
+};
 
 export class AgentError extends AppError {
   readonly retryable: boolean;
+  readonly httpStatus?: number;
+  readonly networkCode?: string;
 
-  constructor(code: ErrorCodeValue, message?: string, retryable?: boolean) {
+  constructor(code: ErrorCodeValue, message?: string, retryable?: boolean, details?: AgentErrorDetails) {
     super(code, message);
     this.retryable = retryable ?? isRetryableCode(code);
+    this.httpStatus = details?.httpStatus;
+    this.networkCode = details?.networkCode;
   }
 }
 

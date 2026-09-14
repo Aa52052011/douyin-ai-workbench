@@ -77,6 +77,14 @@ function redactSensitive(value: unknown): unknown {
       continue;
     }
     next[key] = redactSensitive(nested);
+    if (key === 'qualityGate' && nested && typeof nested === 'object') {
+      const gate = nested as { qualityDisposition?: string; rulesetVersion?: string; repairHistory?: unknown[] };
+      next[key] = {
+        qualityDisposition: gate.qualityDisposition,
+        rulesetVersion: gate.rulesetVersion,
+        repairCount: Array.isArray(gate.repairHistory) ? gate.repairHistory.length : 0,
+      };
+    }
   }
   return next;
 }
