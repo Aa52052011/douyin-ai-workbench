@@ -1,3 +1,12 @@
+import type { ProjectStatusFacts } from "./project-status";
+import {
+  currentCyclePublishComplete,
+  currentCycleReviewComplete,
+  currentCycleScriptsComplete,
+  currentCycleVideosComplete,
+  currentCycleWorkflowNavId,
+} from "./ux/current-cycle";
+
 export const PROJECT_MAIN_NAV = [
   {
     id: "overview",
@@ -17,12 +26,12 @@ export const PROJECT_MAIN_NAV = [
   },
   {
     id: "scripts",
-    label: "脚本",
+    label: "选题与脚本",
     href: (projectId: string) => `/dashboard/projects/${projectId}/content/scripts`,
   },
   {
     id: "videos",
-    label: "视频",
+    label: "视频制作",
     href: (projectId: string) => `/dashboard/projects/${projectId}/content/videos`,
   },
   {
@@ -30,9 +39,17 @@ export const PROJECT_MAIN_NAV = [
     label: "发布与数据",
     href: (projectId: string) => `/dashboard/projects/${projectId}/publish`,
   },
+  {
+    id: "review",
+    label: "AI复盘",
+    href: (projectId: string) => `/dashboard/projects/${projectId}/performance`,
+  },
 ] as const;
 
 export const PROJECT_NAV = PROJECT_MAIN_NAV;
+
+export type ProjectNavId = (typeof PROJECT_MAIN_NAV)[number]["id"];
+export type ProjectWorkflowMark = "done" | "current" | "todo";
 
 export const PROJECT_FOUNDATION_NAV = [
   { id: "product", label: "产品信息", href: (projectId: string) => `/dashboard/projects/${projectId}/product` },
@@ -55,4 +72,64 @@ export function isProjectNavActive(pathname: string, href: string, exact = false
     return pathname === href;
   }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function isProjectNavItemDone(id: ProjectNavId, facts: ProjectStatusFacts | null): boolean {
+  if (!facts) return false;
+  switch (id) {
+    case "overview":
+      return false;
+    case "positioning":
+      return Boolean(facts.positioningValid);
+    case "plans":
+      return Boolean(facts.hasScriptEligiblePlan || facts.latestPlanStatus === "CONFIRMED");
+    case "scripts":
+      return currentCycleScriptsComplete(facts);
+    case "videos":
+      return currentCycleVideosComplete(facts);
+    case "publish":
+      return currentCyclePublishComplete(facts);
+    case "review":
+      return currentCycleReviewComplete(facts);
+    default:
+      return false;
+  }
+}
+
+export function projectWorkflowMark(id: ProjectNavId, current: boolean, facts: ProjectStatusFacts | null): ProjectWorkflowMark {
+  if (isProjectNavItemDone(id, facts)) return "done";
+  if (current) return "current";
+  if (facts && id === currentCycleWorkflowNavId(facts) && id !== "overview") return "current";
+  return "todo";
+}
+
+export function hideProjectShellNextActionBar(pathname: string, projectId: string): boolean {
+  if (pathname === `/dashboard/projects/${projectId}`) return true;
+  return (
+    /\/positioning(\/|$)/.test(pathname) ||
+    /\/content\/plans(\/|$)/.test(pathname) ||
+    /\/content\/scripts(\/|$)/.test(pathname) ||
+    /\/content\/videos(\/|$)/.test(pathname) ||
+    /\/publish(\/|$)/.test(pathname) ||
+    /\/performance(\/|$)/.test(pathname)
+  );
+}
+
+export function workflowMarkSymbol(mark: ProjectWorkflowMark): string {
+  if (mark === "done") return "✓";
+  if (mark === "current") return "●";
+  return "○";
+}
+
+export function adjacentProjectNav(pathname: string, projectId: string): { back?: { href: string; label: string }; next?: { href: string; label: string }; current?: string } {
+  const index = PROJECT_MAIN_NAV.findIndex((item) => isProjectNavActive(pathname, item.href(projectId), "exact" in item ? item.exact : false));
+  if (index < 0) return {};
+  const current = PROJECT_MAIN_NAV[index];
+  const prev = PROJECT_MAIN_NAV[index - 1];
+  const nxt = PROJECT_MAIN_NAV[index + 1];
+  return {
+    current: current.label,
+    back: prev ? { href: prev.href(projectId), label: `返回${prev.label}` } : { href: "/dashboard/projects", label: "返回项目列表" },
+    next: nxt ? { href: nxt.href(projectId), label: nxt.label } : undefined,
+  };
 }

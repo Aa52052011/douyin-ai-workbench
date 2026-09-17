@@ -13,7 +13,7 @@ export function ScriptDetail({
   source?: TopicSourceView | null;
 }) {
   return (
-    <article className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
+    <article className="space-y-4 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <header className="space-y-1">
         <h2 className="text-lg font-medium break-words">{view.title}</h2>
         <p className="text-sm text-neutral-500">

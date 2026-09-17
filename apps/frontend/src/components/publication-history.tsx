@@ -13,12 +13,12 @@ export function PublicationHistory({
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-medium">发布记录</h2>
+      <h2 className="mb-3 text-sm font-medium">已登记作品</h2>
       <ul className="space-y-2">
         {items.map((item, index) => (
           <li
             key={`${item.createdAtLabel}-${item.title}-${index}`}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-3"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] px-4 py-3"
           >
             <div className="min-w-0 text-sm">
               <p className="break-words font-medium">{item.sourceVideoTitle}</p>

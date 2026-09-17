@@ -2,6 +2,7 @@ import type { Asset, Job, Video } from '@prisma/client';
 import { toPublicAsset, type AssetPublic } from '../assets/assets.mapper.js';
 import { toPublicJob, type JobPublic } from '../jobs/jobs.mapper.js';
 import type { QualityPublicView } from './quality/quality.types.js';
+import type { VideoFinalAcceptancePublic } from './video-final-acceptance.js';
 
 export type VideoPublic = {
   id: string;
@@ -20,7 +21,9 @@ export type VideoPublic = {
   updatedAt: Date;
   job: JobPublic | null;
   outputAsset: AssetPublic | null;
+  landscapeAsset?: AssetPublic | null;
   quality?: QualityPublicView | null;
+  finalAcceptance?: VideoFinalAcceptancePublic | null;
 };
 
 type VideoPublicSource = Pick<
@@ -42,7 +45,14 @@ type VideoPublicSource = Pick<
 
 export function toPublicVideo(
   video: VideoPublicSource,
-  extras?: { scriptTitle?: string | null; job?: Job | null; outputAsset?: Asset | null; quality?: QualityPublicView | null },
+  extras?: {
+    scriptTitle?: string | null;
+    job?: Job | null;
+    outputAsset?: Asset | null;
+    landscapeAsset?: Asset | null;
+    quality?: QualityPublicView | null;
+    finalAcceptance?: VideoFinalAcceptancePublic | null;
+  },
 ): VideoPublic {
   return {
     id: video.id,
@@ -61,6 +71,8 @@ export function toPublicVideo(
     updatedAt: video.updatedAt,
     job: extras?.job ? toPublicJob(extras.job) : null,
     outputAsset: extras?.outputAsset ? toPublicAsset(extras.outputAsset) : null,
+    landscapeAsset: extras?.landscapeAsset ? toPublicAsset(extras.landscapeAsset) : null,
     quality: extras?.quality ?? null,
+    finalAcceptance: extras?.finalAcceptance ?? null,
   };
 }

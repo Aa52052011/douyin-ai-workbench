@@ -1,36 +1,56 @@
 @import "tailwindcss";
 
 :root {
-  --acf-bg: #f6f6f4;
-  --acf-background: #f6f6f4;
-  --acf-surface: #ffffff;
-  --acf-surface-subtle: #f1f1ee;
-  --acf-border: #e4e4de;
-  --acf-border-strong: #cfcfc6;
-  --acf-text: #1c1c19;
-  --acf-text-primary: #1c1c19;
-  --acf-text-secondary: #5c5c56;
-  --acf-text-muted: #5f5f58;
+  --acf-bg: #eef1ec;
+  --acf-background: #eef1ec;
+  --acf-page: #eef1ec;
+  --acf-surface: #f7f8f5;
+  --acf-surface-subtle: #f2f4f0;
+  --acf-surface-muted: #f2f4f0;
+  --acf-surface-elevated: #fafbf9;
+  --acf-surface-input: #fafbf9;
+  --acf-border: #d8ded9;
+  --acf-border-subtle: #e2e7e3;
+  --acf-border-strong: #c8d0ca;
+  --acf-text: #1f2933;
+  --acf-text-primary: #1f2933;
+  --acf-text-secondary: #5f6b66;
+  --acf-text-muted: #7a8580;
   --acf-text-disabled: #b3b3ab;
-  --acf-brand: #2f4f4a;
-  --acf-brand-hover: #243e3a;
-  --acf-brand-subtle: #e8efee;
-  --acf-success: #2f6b4f;
-  --acf-success-subtle: #e8f3ec;
-  --acf-warning: #8a6a2a;
-  --acf-warning-subtle: #f6f0e2;
-  --acf-danger: #9b3b32;
-  --acf-danger-subtle: #f8eaea;
-  --acf-info: #3a5878;
-  --acf-info-subtle: #e8eef4;
-  --acf-radius-sm: 6px;
-  --acf-radius-md: 10px;
-  --acf-radius-lg: 14px;
-  --acf-shadow: 0 1px 2px rgba(28, 28, 25, 0.06);
+  --acf-text-inverse: #ffffff;
+  --acf-brand: #176b5b;
+  --acf-brand-hover: #125648;
+  --acf-brand-active: #0f4a3f;
+  --acf-brand-subtle: #e4eee9;
+  --acf-brand-soft: #e4eee9;
+  --acf-brand-soft-strong: #d7e6df;
+  --acf-brand-border: #b7d4c9;
+  --acf-success: #4c8a6a;
+  --acf-success-subtle: #edf5f0;
+  --acf-success-soft: #edf5f0;
+  --acf-warning: #a96f18;
+  --acf-warning-subtle: #fff7e8;
+  --acf-warning-soft: #fff7e8;
+  --acf-danger: #c2413b;
+  --acf-danger-subtle: #fcedec;
+  --acf-danger-soft: #fcedec;
+  --acf-info: #52635d;
+  --acf-info-subtle: #eef4f3;
+  --acf-info-soft: #eef4f3;
+  --acf-radius-sm: 8px;
+  --acf-radius-md: 12px;
+  --acf-radius-lg: 12px;
+  --acf-radius-pill: 999px;
+  --acf-shadow: none;
+  --acf-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --acf-shadow-overlay: 0 8px 24px rgba(28, 28, 25, 0.12);
   --acf-motion: 150ms;
   --acf-ease: ease-out;
+  --acf-app-max: 90rem;
   --acf-content-max: 72rem;
-  --acf-content-max-wide: 90rem;
+  --acf-content-max-wide: 80rem;
+  --acf-form-max: 36rem;
+  --acf-reading-max: 42rem;
   --acf-sidebar-width: 13rem;
   --acf-topbar-height: 3.25rem;
   --acf-page-pad: 1.5rem;
@@ -38,26 +58,34 @@
   --acf-space-2: 8px;
   --acf-space-3: 12px;
   --acf-space-4: 16px;
-  --acf-space-5: 20px;
   --acf-space-6: 24px;
   --acf-space-8: 32px;
-  --acf-space-10: 40px;
   --acf-space-12: 48px;
+  --acf-space-16: 64px;
 }
 
 @theme inline {
   --color-acf-bg: var(--acf-bg);
+  --color-acf-page: var(--acf-page);
   --color-acf-surface: var(--acf-surface);
   --color-acf-surface-subtle: var(--acf-surface-subtle);
+  --color-acf-surface-muted: var(--acf-surface-muted);
+  --color-acf-surface-elevated: var(--acf-surface-elevated);
+  --color-acf-surface-input: var(--acf-surface-input);
   --color-acf-border: var(--acf-border);
+  --color-acf-border-subtle: var(--acf-border-subtle);
   --color-acf-border-strong: var(--acf-border-strong);
   --color-acf-text: var(--acf-text);
   --color-acf-text-secondary: var(--acf-text-secondary);
   --color-acf-text-muted: var(--acf-text-muted);
   --color-acf-text-disabled: var(--acf-text-disabled);
+  --color-acf-text-inverse: var(--acf-text-inverse);
   --color-acf-brand: var(--acf-brand);
   --color-acf-brand-hover: var(--acf-brand-hover);
+  --color-acf-brand-active: var(--acf-brand-active);
   --color-acf-brand-subtle: var(--acf-brand-subtle);
+  --color-acf-brand-soft: var(--acf-brand-soft);
+  --color-acf-brand-border: var(--acf-brand-border);
   --color-acf-success: var(--acf-success);
   --color-acf-success-subtle: var(--acf-success-subtle);
   --color-acf-warning: var(--acf-warning);
@@ -76,7 +104,7 @@ html {
 }
 
 body {
-  background: var(--acf-bg);
+  background: var(--acf-page);
   color: var(--acf-text);
   font-family:
     ui-sans-serif,
@@ -91,7 +119,15 @@ body {
   outline-offset: 2px;
 }
 
-.acf-content {
+.acf-app-frame {
+  width: 100%;
+  max-width: var(--acf-app-max);
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.acf-content,
+.acf-page-container {
   width: 100%;
   max-width: var(--acf-content-max);
   margin-inline: auto;
@@ -101,6 +137,23 @@ body {
   width: 100%;
   max-width: var(--acf-content-max-wide);
   margin-inline: auto;
+}
+
+.acf-form-container {
+  width: 100%;
+  max-width: var(--acf-form-max);
+}
+
+.acf-reading-container {
+  width: 100%;
+  max-width: var(--acf-reading-max);
+}
+
+.acf-display {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
 .acf-page-title {
@@ -118,13 +171,18 @@ body {
 
 .acf-card-title {
   font-size: 0.9375rem;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.4;
 }
 
 .acf-body {
   font-size: 0.875rem;
   line-height: 1.55;
+}
+
+.acf-body-small {
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .acf-body-secondary {
@@ -135,10 +193,11 @@ body {
 
 .acf-label {
   font-size: 0.8125rem;
-  font-weight: 550;
+  font-weight: 500;
 }
 
-.acf-caption {
+.acf-caption,
+.acf-metadata {
   font-size: 0.75rem;
   color: var(--acf-text-muted);
   line-height: 1.45;
@@ -155,8 +214,70 @@ body {
 }
 
 .acf-table th {
-  font-weight: 550;
+  font-weight: 500;
   color: var(--acf-text-secondary);
+}
+
+.acf-nav-current {
+  background: var(--acf-brand-soft);
+  color: var(--acf-brand);
+  font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--acf-brand);
+}
+
+.acf-nav-page {
+  background: var(--acf-brand-soft);
+  color: var(--acf-brand);
+  font-weight: 500;
+}
+
+.acf-nav-active {
+  background: var(--acf-brand-soft);
+  color: var(--acf-brand);
+  font-weight: 500;
+}
+
+.acf-nav-workflow {
+  background: transparent;
+  color: var(--acf-brand);
+  font-weight: 500;
+}
+
+.acf-nav-done {
+  background: transparent;
+  color: var(--acf-text);
+}
+
+.acf-nav-todo {
+  background: transparent;
+  color: var(--acf-text-secondary);
+}
+
+.acf-stage-current {
+  background: var(--acf-surface);
+  border-color: var(--acf-border);
+  box-shadow: inset 3px 0 0 var(--acf-brand);
+}
+
+.acf-field {
+  background: var(--acf-surface-input);
+  border-color: var(--acf-border);
+}
+
+.acf-metric-up {
+  color: var(--acf-success);
+}
+
+.acf-status-success {
+  color: var(--acf-success);
+}
+
+.acf-status-warning {
+  color: var(--acf-warning);
+}
+
+.acf-status-muted {
+  color: var(--acf-text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

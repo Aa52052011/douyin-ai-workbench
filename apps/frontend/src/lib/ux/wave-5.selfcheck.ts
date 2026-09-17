@@ -3,11 +3,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { canSubmitComplete, validateExternalUrl } from "../publication.form";
-import { canSubmitMetrics, emptyMetricForm } from "../performance.form";
-import { latestMetricCards, metricHistoryRows } from "../performance.view";
+import { canSubmitMetrics, emptyMetricForm, hoursSince } from "../performance.form";
+import { latestMetricCards, metricHistoryRows, performanceReviewItems } from "../performance.view";
 import { productStatusLabel } from "./status-map";
 import {
-  SHORT_LINK_HUMAN_ERROR,
   containsForbiddenAutoPublish,
   containsForbiddenPlatformVerifiedLie,
   findingTypeCopy,
@@ -29,6 +28,8 @@ import {
   showPlatformVerified,
   staleAnalysisCopy,
   trendPercent,
+  evidenceForInsight,
+  INSUFFICIENT_EVIDENCE_COPY,
 } from "./publication-monitoring-v5";
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -57,15 +58,17 @@ function run() {
   assert.equal(card.includes("立即发布到抖音"), false);
   assert.equal(card.includes("一键发布"), false);
   assert.equal(containsForbiddenAutoPublish(card), false);
-  assert.match(publish, /ManualPublishCardV5/);
+  assert.match(publish, /declarePublished/);
+  assert.equal(publish.includes("创建发布记录"), false);
   assert.equal(publish.includes("立即发布到抖音"), false);
 
-  assert.match(complete, /抖音作品链接/);
-  assert.match(complete, /把发布后的作品链接粘贴到这里/);
-  assert.match(complete, /没有链接？也可以填写作品 ID/);
-  assert.equal(validateExternalUrl("https://v.douyin.com/abc"), SHORT_LINK_HUMAN_ERROR);
-  assert.equal(canSubmitComplete({ externalUrl: "https://v.douyin.com/abc", externalPostId: "" }), false);
-  assert.equal(canSubmitComplete({ externalUrl: "https://v.douyin.com/abc", externalPostId: "123" }), true);
+  assert.match(complete, /登记已发布作品/);
+  assert.match(complete, /粘贴你刚刚在抖音发布的视频链接/);
+  assert.match(complete, /粘贴抖音作品链接，例如 https:\/\/v\.douyin.com\/\.\.\./);
+  assert.match(complete, /登记作品/);
+  assert.equal(validateExternalUrl("https://v.douyin.com/QwZ6GP7OFUU/"), null);
+  assert.equal(canSubmitComplete({ externalUrl: "https://v.douyin.com/QwZ6GP7OFUU/", externalPostId: "" }), true);
+  assert.equal(canSubmitComplete({ externalUrl: "not-a-url", externalPostId: "" }), false);
   assert.equal(registrationVerificationCopy("USER_ASSERTED"), "用户已登记");
   assert.equal(registrationVerificationCopy("FORMAT_VALIDATED"), "链接格式已识别");
   assert.equal(showPlatformVerified(false), false);
@@ -76,6 +79,13 @@ function run() {
 
   assert.equal(monitoring.includes("productionArtifactId"), true);
   assert.equal(boundVideoLabel(true), "已绑定成片");
+  assert.equal(boundVideoLabel(false, "餐饮店不会拍视频，现场生成一周内容方案"), "未绑定成片");
+  assert.equal(boundVideoLabel(true, "餐饮店不会拍视频，现场生成一周内容方案"), "餐饮店不会拍视频，现场生成一周内容方案");
+  const summary = read("src/components/published-post-summary-v5.tsx");
+  assert.match(summary, /登记时间/);
+  assert.equal(summary.includes("发布时间"), false);
+  assert.equal(summary.includes("平台已验证"), false);
+  assert.match(detail, /publication\?\.videoId/);
   assert.match(monitoring, /boundVideoLabel/);
   assert.equal(monitoring.includes("{item.productionArtifactId}"), false);
   assert.match(monitoring, /下一步/);
@@ -99,13 +109,29 @@ function run() {
 
   const history = metricHistoryRows(
     [
-      { observedAt: "2026-03-02T12:00:00.000Z", views: 80, likes: 1, comments: 0, shares: 0, favorites: 0 },
-      { observedAt: "2026-03-03T12:00:00.000Z", views: 200, likes: 2, comments: 0, shares: 0, favorites: 0 },
+      { observedAt: "2026-03-02T12:00:00.000Z", views: 80, likes: 1, comments: 0, shares: 0, favorites: 0, newFollowers: null },
+      { observedAt: "2026-03-03T12:00:00.000Z", views: 200, likes: 2, comments: 0, shares: 0, favorites: 0, newFollowers: 0 },
     ],
     "2026-03-02T00:00:00.000Z",
   );
   assert.equal(history[0]?.views, "200");
-  assert.match(history[0]?.changeLabel ?? "", /播放/);
+  assert.equal(history[0]?.comments, "0");
+  assert.equal(history[0]?.changeLabel, "0");
+  assert.equal(history[1]?.changeLabel, "—");
+  assert.equal(hoursSince("2026-09-15T14:11:00.000Z", "2026-09-15T14:20:00.000Z"), "9 分钟");
+  assert.equal(evidenceForInsight("HIGH_LIKE_RATE", { likes: 31 }, { likes: 42 }), "点赞从 31 到 42（+11 / +35.5%）");
+  assert.equal(evidenceForInsight("HIGH_COMMENT_RATE", { comments: 10, views: 96 }, { comments: 12, views: 115 }).includes("播放"), false);
+  assert.equal(evidenceForInsight("INSUFFICIENT_DATA", { views: 96 }, { views: 115 }), INSUFFICIENT_EVIDENCE_COPY);
+  assert.equal(detail.includes('evidenceFromCounts("播放量"'), false);
+  assert.equal(performance.includes('evidenceFromCounts("播放量"'), false);
+  const mapped = performanceReviewItems(
+    { insights: [{ code: "HIGH_SHARE_RATE" }, { code: "HIGH_LIKE_RATE" }] },
+    [
+      { observedAt: "2026-09-15T14:11:00.000Z", views: 96, likes: 31, shares: 3 },
+      { observedAt: "2026-09-15T14:20:00.000Z", views: 115, likes: 42, shares: 5 },
+    ],
+  );
+  assert.notEqual(mapped.find((item) => item.id === "HIGH_SHARE_RATE")?.evidence, mapped.find((item) => item.id === "HIGH_LIKE_RATE")?.evidence);
 
   assert.equal(trendPercent(0, 10), null);
   assert.equal(trendPercent(100, 150), "50%");
@@ -133,16 +159,25 @@ function run() {
   assert.equal(reviewActionLabel("approve"), "采纳");
   assert.equal(findingTypeCopy("HYPOTHESIS"), "待验证假设");
   assert.match(rec, /待验证假设/);
-  assert.match(rec, /你正在审核：AI给出的优化建议/);
+  assert.match(rec, /你正在审核：下一步可执行建议/);
+  assert.match(rec, /正在保存决策/);
+  assert.match(rec, /保存决策失败，请重试/);
   assert.equal(notAutoAppliedCopy().includes("尚未自动应用"), true);
   assert.equal(performance.includes("已自动应用"), false);
+  assert.equal(performance.includes("优化建议说明"), false);
+  assert.match(performance, /分析生成失败/);
+  assert.equal(performance.includes("目前数据还不足以形成稳定优化建议"), false);
+  assert.match(performance, /RecommendationReviewV5/);
+  assert.match(performance, /persistRecommendationReviewAndReload/);
   assert.equal(overclaimRewrite().includes("因为这个开头"), false);
   assert.equal(staleAnalysisCopy(), "有新的数据，建议重新复盘");
   assert.equal(forceReanalysisCopy(), "使用最新数据重新复盘");
   assert.equal(detail.includes("STALE_BY_NEWER_METRICS"), true);
   assert.equal(detail.includes("平台已验证"), false);
   assert.match(detail, /data-acf-published-post-detail-v5/);
-  assert.match(detail, /FeedbackHandoffUXV5/);
+  assert.match(detail, /persistRecommendationReviewAndReload/);
+  assert.match(detail, /REVIEW_SAVE_FAILED/);
+  assert.match(detail, /WorkflowBackNavV1/);
   assert.equal(monitoring.includes("AWAITING_MANUAL_PUBLICATION"), false);
 
   const next = hubNextAction({

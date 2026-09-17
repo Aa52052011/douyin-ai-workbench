@@ -49,7 +49,9 @@ function run() {
   const dashboard = read("src/app/dashboard/page.tsx");
   assert.match(dashboard, /TaskCenter/);
   assert.equal(dashboard.includes("router.replace"), false);
-  assert.match(dashboard, /当前最重要的一步/);
+  assert.match(dashboard, /继续上次工作|ResumeWorkCard/);
+  assert.match(dashboard, /需要处理/);
+  assert.match(dashboard, /最近项目/);
 
   const a = resolveNextActionV2("p1", emptyStatusFacts());
   const b = resolveNextActionV2("p1", emptyStatusFacts());
@@ -85,7 +87,8 @@ function run() {
     hasPublishedPublication: true,
     hasMetrics: true,
   });
-  assert.equal(withMetrics.label, "开始AI复盘");
+  assert.equal(withMetrics.label, "创建下一期内容");
+  assert.match(withMetrics.href, /\/content\/plans/);
 
   const task = collectProjectTask(project, emptyStatusFacts());
   assert.equal(task.title.includes("CONTENT_"), false);
@@ -97,7 +100,9 @@ function run() {
 
   const overview = read("src/app/dashboard/projects/[projectId]/page.tsx");
   assert.match(overview, /NextActionCard/);
-  assert.match(overview, /WorkflowProgress/);
+  assert.match(overview, /本期进度/);
+  assert.match(overview, /最近内容/);
+  assert.match(overview, /项目资料/);
   assert.match(overview, /ContextReuseSummary/);
   assert.match(read("src/components/publication-data-hub.tsx"), /修改定位/);
   assert.equal(overview.includes("tenantId"), false);

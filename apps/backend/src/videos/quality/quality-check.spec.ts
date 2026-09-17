@@ -134,7 +134,7 @@ describe('deterministic quality checks', () => {
 
   it('subtitle overflow', () => {
     const result = runDeterministicQualityChecks(
-      base({ subtitleCues: [{ start: 0, end: 4, text: '这是一句远远超过安全字数限制的中文字幕内容测试溢出'.repeat(2) }] }),
+      base({ subtitleCues: [{ start: 0, end: 4, text: '这是一句远远超过安全字数限制的中文字幕内容测试溢出'.repeat(4) }] }),
     );
     expect(result.issues.some((item) => item.code === 'SUBTITLE_OVERFLOW_RISK')).toBe(true);
   });

@@ -14,24 +14,61 @@ function withCopy(action: ProjectNextAction, label: string, ctaLabel: string, de
   };
 }
 
+export function latestPlanNeedsScripts(facts: ProjectStatusFacts): boolean {
+  if (facts.latestPlanStatus !== "CONFIRMED" && facts.latestPlanStatus !== "ARCHIVED") return false;
+  if (typeof facts.latestPlanTopicCount !== "number" || typeof facts.completedScriptsOnLatestPlan !== "number") {
+    return false;
+  }
+  return facts.completedScriptsOnLatestPlan < facts.latestPlanTopicCount;
+}
+
 /** Deterministic UI presentation over existing getProjectNextAction facts. No LLM. */
 export function resolveNextActionV2(projectId: string, facts: ProjectStatusFacts): PresentedNextAction {
-  const raw = getProjectNextAction(projectId, facts);
+  const path = (suffix: string) => `/dashboard/projects/${projectId}${suffix}`;
+  const planQuery = facts.latestPlanId ? `?contentPlanId=${encodeURIComponent(facts.latestPlanId)}` : "";
 
-  if (raw.id === "next-plan" && facts.hasMetrics === true) {
+  if (facts.productPresent === true && facts.positioningValid === true && latestPlanNeedsScripts(facts)) {
+    const done = facts.completedScriptsOnLatestPlan ?? 0;
+    const drafts = facts.draftScriptsOnLatestPlan ?? 0;
+    if (drafts > 0) {
+      return withCopy(
+        { id: "script", label: "确认脚本", href: path(`/content/scripts${planQuery}`), ctaLabel: "去确认" },
+        "确认脚本",
+        "去确认",
+        "有脚本还没有确认。",
+      );
+    }
+    const label = done === 0 ? "制作第一条脚本" : `继续制作第 ${done + 1} 条脚本`;
     return withCopy(
-      { ...raw, id: "performance", href: `/dashboard/projects/${projectId}/performance` },
-      "开始AI复盘",
-      "开始AI复盘",
-      "已有表现数据，可以在发布与数据里查看复盘建议。",
+      { id: "script", label, href: path(`/content/scripts${planQuery}`), ctaLabel: "继续处理" },
+      label,
+      "继续处理",
+      "内容计划已确认，可以继续为选题生成脚本。",
     );
   }
+
+  if (
+    facts.hasVideoAwaitingAcceptance === true &&
+    facts.productPresent === true &&
+    facts.positioningValid === true &&
+    !latestPlanNeedsScripts(facts)
+  ) {
+    const count = facts.awaitingAcceptanceCount ?? 0;
+    return withCopy(
+      { id: "video", label: "待审核视频", href: path("/content/videos"), ctaLabel: "去审核" },
+      "待审核视频",
+      "去审核",
+      count > 0 ? `${count} 条成片等待你确认` : "有成片等待你确认",
+    );
+  }
+
+  const raw = getProjectNextAction(projectId, facts);
 
   switch (raw.id) {
     case "product":
       return withCopy(raw, "完善账号定位", raw.ctaLabel ?? "继续完善", "先补齐产品资料，再生成账号定位。不会要求你重复填写已保存的内容。");
     case "positioning":
-      return withCopy(raw, "完善账号定位", "继续完善");
+      return withCopy(raw, "开始账号定位", "开始账号定位", "告诉 AI 你的账号目标。后续计划和脚本会复用这些信息。");
     case "research":
     case "analysis":
     case "strategy":

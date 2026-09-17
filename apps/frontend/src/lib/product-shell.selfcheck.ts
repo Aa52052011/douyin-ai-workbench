@@ -23,6 +23,9 @@ function run() {
   assert.equal(GLOBAL_NAV[0].match("/dashboard/projects"), false);
   assert.equal(GLOBAL_NAV[1].match("/dashboard/projects/abc"), true);
   assert.equal(GLOBAL_NAV[2].match("/dashboard/monitoring"), true);
+  assert.equal(GLOBAL_NAV[2].match("/dashboard/monitoring/post-1"), true);
+  assert.equal(GLOBAL_NAV[2].match("/dashboard/projects/abc/publish"), false);
+  assert.equal(GLOBAL_NAV[2].match("/dashboard/projects/abc/performance"), false);
   assert.equal(GLOBAL_NAV[3].match("/dashboard/settings"), true);
 
   const hrefs = flattenNavHrefs(projectId);
@@ -33,8 +36,10 @@ function run() {
     `/dashboard/projects/${projectId}/content/scripts`,
     `/dashboard/projects/${projectId}/content/videos`,
     `/dashboard/projects/${projectId}/publish`,
+    `/dashboard/projects/${projectId}/performance`,
   ]);
-  assert.equal(PROJECT_NAV.length, 6);
+  assert.equal(PROJECT_NAV.length, 7);
+  assert.equal(PROJECT_NAV.some((item) => item.label === "AI复盘"), true);
   assert.equal(PROJECT_NAV.some((item) => String(item.label) === "Agents" || String(item.label).includes("Agent")), false);
   assert.equal(isProjectNavActive(`/dashboard/projects/${projectId}`, `/dashboard/projects/${projectId}`, true), true);
   assert.equal(isProjectNavActive(`/dashboard/projects/${projectId}/product`, `/dashboard/projects/${projectId}`, true), false);
@@ -72,11 +77,11 @@ function run() {
     "创建内容计划",
   );
 
-  assert.equal(statusLabel("PENDING"), "等待中");
-  assert.equal(statusLabel("RUNNING"), "生成中");
-  assert.equal(statusLabel("PROCESSING"), "生成中");
+  assert.equal(statusLabel("PENDING"), "等待处理");
+  assert.equal(statusLabel("RUNNING"), "正在处理");
+  assert.equal(statusLabel("PROCESSING"), "正在处理");
   assert.equal(statusLabel("COMPLETED"), "已完成");
-  assert.equal(statusLabel("FAILED"), "失败");
+  assert.equal(statusLabel("FAILED"), "处理失败");
   assert.equal(statusLabel("READY"), "可使用");
   assert.equal(statusLabel("DRAFT"), "草稿");
   assert.equal(statusLabel("CONFIRMED"), "已确认");

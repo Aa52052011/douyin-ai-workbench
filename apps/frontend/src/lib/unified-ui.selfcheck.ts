@@ -14,6 +14,7 @@ function run() {
   assert.match(read("app/dashboard/projects/[projectId]/publish/page.tsx"), /发布运营/);
   assert.match(read("components/project-shell.tsx"), /项目资料/);
   assert.match(read("components/app-shell.tsx"), /移动主导航/);
+  assert.match(read("components/app-shell.tsx"), /data-acf-app-shell-v2/);
   console.log("unified-ui selfcheck PASS");
 }
 

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { filenameFromDisposition } from "./video-download";
 import { createVideoBody } from "./video.form";
 import type { VideoRecord } from "./video.types";
 
@@ -29,8 +30,20 @@ export function retryVideo(accessToken: string, id: string) {
   });
 }
 
-export async function exportVideoFile(accessToken: string, id: string): Promise<{ blob: Blob; filename: string }> {
-  return fetchBinary(`/videos/${id}/export`, accessToken, "video.mp4");
+export function acceptFinalVideo(accessToken: string, id: string) {
+  return api<VideoRecord>(`/videos/${id}/final-acceptance`, {
+    method: "POST",
+    accessToken,
+  });
+}
+
+export async function exportVideoFile(
+  accessToken: string,
+  id: string,
+  variant?: "vertical" | "landscape",
+): Promise<{ blob: Blob; filename: string }> {
+  const query = variant === "landscape" ? "?variant=landscape" : "";
+  return fetchBinary(`/videos/${id}/export${query}`, accessToken, "video.mp4");
 }
 
 export async function fetchVideoPreview(accessToken: string, contentPath: string): Promise<Blob> {
@@ -54,9 +67,4 @@ async function fetchBinary(path: string, accessToken: string, fallbackName: stri
   }
   const blob = await response.blob();
   return { blob, filename: filenameFromDisposition(response.headers.get("Content-Disposition"), fallbackName) };
-}
-
-function filenameFromDisposition(header: string | null, fallback: string): string {
-  const match = header?.match(/filename="([^"]+)"/);
-  return match?.[1] || fallback;
 }

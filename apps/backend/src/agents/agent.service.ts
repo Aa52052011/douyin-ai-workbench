@@ -36,6 +36,7 @@ import {
 } from './agent.types.js';
 import { PerformanceFeedbackService } from '../metrics/performance-feedback.service.js';
 import { compactLearningContext, buildLearningSignalsFromPerformanceFeedback } from '../research/learning-signals.js';
+import { collectAcceptedPerformanceFeedback, type ActionableRecommendationV1 } from '../performance-analysis/actionable-recommendation.mapper.js';
 
 @Injectable()
 export class AgentsService {
@@ -185,12 +186,27 @@ export class AgentsService {
     if (record.campaignStrategy !== undefined) {
       throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
     }
-    let positioning = record.positioning;
-    if (typeof record.positioningRunId === 'string' && record.positioningRunId) {
-      positioning = await this.loadPositioningFromRun(record.positioningRunId, scope);
+    const ignoreAcceptedPerformanceFeedback = record.ignoreAcceptedPerformanceFeedback === true;
+    const { ignoreAcceptedPerformanceFeedback: _ignoreFlag, ...planningRecord } = record;
+    let positioning = planningRecord.positioning;
+    if (typeof planningRecord.positioningRunId === 'string' && planningRecord.positioningRunId) {
+      positioning = await this.loadPositioningFromRun(planningRecord.positioningRunId, scope);
     }
     const performanceFeedback = await this.performanceFeedback.buildForProject(scope);
-    const campaignStrategy = await this.loadCampaignStrategy(record.strategyId, scope);
+    const acceptedCycles = await this.prisma.contentFeedbackCycle.findMany({
+      where: { tenantId: scope.tenantId, workspaceId: scope.workspaceId, projectId: scope.projectId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const acceptedPerformanceFeedback = ignoreAcceptedPerformanceFeedback
+      ? []
+      : acceptedCycles.flatMap((cycle) =>
+          collectAcceptedPerformanceFeedback({
+            sourcePublicationId: cycle.sourcePublishedPostId,
+            sourceAnalysisId: cycle.analysisId,
+            recommendations: (cycle.recommendations as unknown as ActionableRecommendationV1[]) ?? [],
+          }),
+        );
+    const campaignStrategy = await this.loadCampaignStrategy(planningRecord.strategyId, scope);
     const signals = buildLearningSignalsFromPerformanceFeedback(performanceFeedback);
     const latest = await this.prisma.strategyAdjustmentRecommendation.findFirst({
       where: { tenantId: scope.tenantId, projectId: scope.projectId, status: 'ACTIVE' },
@@ -212,9 +228,10 @@ export class AgentsService {
         : {}),
     };
     return parseContentPlanningInput({
-      ...record,
+      ...planningRecord,
       positioning,
       performanceFeedback,
+      acceptedPerformanceFeedback,
       learningContext,
       ...(campaignStrategy ? { campaignStrategy } : {}),
     });

@@ -32,6 +32,15 @@ export type ContentPlanningInput = {
   campaignStrategy?: CampaignStrategyPlanningSnapshot;
   trendData?: TrendDataSnapshot;
   performanceFeedback?: CompactPerformanceFeedback;
+  acceptedPerformanceFeedback?: Array<{
+    recommendationId?: string;
+    category: string;
+    recommendedAction: string;
+    supportingEvidence: string[];
+    sourcePublicationId: string;
+    sourceAnalysisId: string;
+    reviewedAt: string | null;
+  }>;
   learningContext?: {
     confirmed: Array<{ key: string; summary: string; supportCount: number; status: string }>;
     candidate: Array<{ key: string; summary: string; supportCount: number; status: string }>;
@@ -103,6 +112,7 @@ export const CONTENT_PLANNING_INPUT_KEYS = [
   'campaignStrategy',
   'trendData',
   'performanceFeedback',
+  'acceptedPerformanceFeedback',
   'learningContext',
   'nextContentPlanningFeedback',
 ] as const;

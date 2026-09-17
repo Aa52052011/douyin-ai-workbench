@@ -5,6 +5,7 @@ import { assertAudioMatchesFormat, mimeForTtsFormat } from '../audio/audio-forma
 import { StorageService } from '../storage/storage.service.js';
 import type { TtsProvider, TtsSynthesizeRequest, TtsSynthesizeResult } from './media-provider.types.js';
 import { decodeHexAudio, looksLikeAudioUrl } from '../tts/minimax-tts-audio.js';
+import { parseMiniMaxSubtitlePayload } from '../tts/minimax-tts-subtitles.js';
 import {
   assertMiniMaxTtsConfigured,
   joinT2aV2Url,
@@ -28,12 +29,13 @@ export type MiniMaxTtsFetch = typeof fetch;
 export type MiniMaxTtsProbe = (body: Buffer, mimeType: string) => Promise<number | null>;
 
 type MiniMaxT2aResponse = {
-  data?: { audio?: string; status?: number } | null;
+  data?: { audio?: string; status?: number; subtitle_file?: string; subtitle?: unknown } | null;
   extra_info?: {
     audio_length?: number;
     audio_size?: number;
     usage_characters?: number;
     audio_format?: string;
+    word_list?: unknown;
   };
   trace_id?: string;
   base_resp?: { status_code?: number; status_msg?: string };
@@ -58,7 +60,7 @@ export class MiniMaxTtsProvider implements TtsProvider {
   ): Promise<TtsSynthesizeResult> {
     const config = assertMiniMaxTtsConfigured(readMiniMaxTtsConfig());
     try {
-      const { body, extra } = await requestMiniMaxAudio(config, request, fetchImpl);
+      const { body, extra, speechCues, timingSource } = await requestMiniMaxAudio(config, request, fetchImpl);
       const mimeType = mimeForTtsFormat(config.format);
       assertAudioMatchesFormat(body, config.format, mimeType);
       const providerDurationMs =
@@ -71,6 +73,8 @@ export class MiniMaxTtsProvider implements TtsProvider {
         duration: seconds,
         mimeType,
         size: stored.size,
+        speechCues,
+        timingSource,
         usage: {
           inputCharacters: extra.usage_characters ?? normalizeTtsText(request.text).length,
           audioSeconds: seconds,
@@ -90,7 +94,12 @@ export async function requestMiniMaxAudio(
   config: MiniMaxTtsConfig,
   request: TtsSynthesizeRequest,
   fetchImpl: MiniMaxTtsFetch,
-): Promise<{ body: Buffer; extra: NonNullable<MiniMaxT2aResponse['extra_info']> }> {
+): Promise<{
+  body: Buffer;
+  extra: NonNullable<MiniMaxT2aResponse['extra_info']>;
+  speechCues: NonNullable<TtsSynthesizeResult['speechCues']>;
+  timingSource: NonNullable<TtsSynthesizeResult['timingSource']>;
+}> {
   const text = normalizeTtsText(request.text);
   if (!text || text.length > MINIMAX_MAX_TEXT_CHARS) {
     throw ttsError(ErrorCode.TTS_PROVIDER_INVALID_INPUT);
@@ -116,6 +125,8 @@ export async function requestMiniMaxAudio(
         stream: false,
         language_boost: config.languageBoost,
         output_format: 'hex',
+        subtitle_enable: true,
+        subtitle_type: 'sentence',
         voice_setting: {
           voice_id: voiceId,
           speed,
@@ -145,7 +156,13 @@ export async function requestMiniMaxAudio(
     if (!audio || looksLikeAudioUrl(audio)) {
       throw ttsError(ErrorCode.TTS_PROVIDER_INVALID_RESPONSE);
     }
-    return { body: decodeHexAudio(audio), extra: parsed.extra_info ?? {} };
+    const speechCues = await resolveMiniMaxSpeechCues(parsed, config, fetchImpl);
+    return {
+      body: decodeHexAudio(audio),
+      extra: parsed.extra_info ?? {},
+      speechCues,
+      timingSource: speechCues.length > 0 ? 'provider_sentence' : 'none',
+    };
   } catch (error) {
     if (isAbortError(error)) {
       throw ttsError(ErrorCode.TTS_PROVIDER_TIMEOUT);
@@ -153,6 +170,44 @@ export async function requestMiniMaxAudio(
     throw error;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function resolveMiniMaxSpeechCues(
+  parsed: MiniMaxT2aResponse,
+  config: MiniMaxTtsConfig,
+  fetchImpl: MiniMaxTtsFetch,
+) {
+  const inline = parseMiniMaxSubtitlePayload(parsed.data?.subtitle ?? parsed.extra_info?.word_list ?? parsed);
+  if (inline.length > 0) {
+    return inline;
+  }
+  const file = parsed.data?.subtitle_file?.trim();
+  if (!file) {
+    return [];
+  }
+  if (file.startsWith('{') || file.startsWith('[')) {
+    try {
+      return parseMiniMaxSubtitlePayload(JSON.parse(file));
+    } catch {
+      return [];
+    }
+  }
+  if (!/^https?:\/\//i.test(file)) {
+    return [];
+  }
+  const response = await fetchImpl(file, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+  });
+  if (!response.ok) {
+    return [];
+  }
+  const raw = await readLimitedResponseBody(response, config.maxResponseBytes);
+  try {
+    return parseMiniMaxSubtitlePayload(JSON.parse(raw.toString('utf8')));
+  } catch {
+    return [];
   }
 }
 

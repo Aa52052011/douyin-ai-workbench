@@ -13,7 +13,7 @@ const ITEMS = [
 export function FinalReviewChecklistV4() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4" data-acf-final-review-checklist>
+    <section className="rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4" data-acf-final-review-checklist>
       <h2 className="text-sm font-medium">审核时可以对照看</h2>
       <p className="acf-caption mt-1">这是给你自己用的清单，不会代替确认通过。</p>
       <ul className="mt-3 space-y-2 text-sm">

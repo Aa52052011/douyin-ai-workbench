@@ -11,6 +11,11 @@ import {
   PrismaClient,
   PublicationMode,
   PublicationStatus,
+  PublicationVerificationStatus,
+  PublicationRegistrationSource,
+  PublishedPostLifecycleStatus,
+  MonitoringRuntimeStatus,
+  MonitoringMode,
   VideoStatus,
 } from '@prisma/client';
 import type { AuthContext } from '../auth/auth.types.js';
@@ -31,6 +36,8 @@ import {
   sameManualExternalIdentity,
 } from './manual-external-identity.js';
 import { readPublicationIdFromJobInput } from './publish-job-input.js';
+import { canUseVideoAsManualPublicationSource, sourceBindingFromAcceptance } from './publication-source-binding.js';
+import { isCurrentVerticalAcceptance } from '../videos/video-final-acceptance.js';
 
 @Injectable()
 export class PublicationsService {
@@ -67,7 +74,7 @@ export class PublicationsService {
 
   async getById(auth: AuthContext, id: string, workspaceHint?: string): Promise<PublicationPublic> {
     const publication = await this.requirePublication(auth, id, workspaceHint);
-    return toPublicPublication(publication, publication.platformAccount);
+    return this.present(publication, publication.platformAccount);
   }
 
   async create(
@@ -79,7 +86,8 @@ export class PublicationsService {
     const workspaceId = resolveWorkspaceId(auth, meta.workspaceHint);
     const video = await this.requirePublishableVideo(auth.tenantId, workspaceId, videoId);
     if (dto.mode === PublicationMode.MANUAL) {
-      return this.createManual(auth, video, dto, meta, workspaceId);
+      const acceptance = await this.requireCurrentFinalAcceptance(auth.tenantId, video);
+      return this.createManual(auth, video, dto, meta, workspaceId, acceptance);
     }
     this.providers.resolve(dto.platform);
     if (!dto.platformAccountId) {
@@ -251,7 +259,7 @@ export class PublicationsService {
     if (result.jobId) {
       await this.dispatch(auth.tenantId, result.jobId, result.publication.id);
     }
-    return toPublicPublication(result.publication, result.publication.platformAccount);
+    return this.present(result.publication, result.publication.platformAccount);
   }
 
   async completeManual(
@@ -281,6 +289,26 @@ export class PublicationsService {
       if (current.mode !== PublicationMode.MANUAL) {
         throw new AppError(ErrorCode.MANUAL_PUBLICATION_INVALID_STATE);
       }
+      if (current.videoId && (identity.externalUrl || identity.externalPostId)) {
+        const duplicate = await tx.publication.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            videoId: current.videoId,
+            mode: PublicationMode.MANUAL,
+            OR: [
+              ...(identity.externalUrl ? [{ externalUrl: identity.externalUrl }] : []),
+              ...(identity.externalPostId ? [{ externalPostId: identity.externalPostId }] : []),
+            ],
+          },
+          include: { platformAccount: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (duplicate && duplicate.status === PublicationStatus.PUBLISHED) {
+          if (sameManualExternalIdentity(duplicate, identity) || duplicate.id === current.id) {
+            return duplicate;
+          }
+        }
+      }
       if (current.status === PublicationStatus.PUBLISHED) {
         if (sameManualExternalIdentity(current, identity)) {
           return current;
@@ -296,21 +324,37 @@ export class PublicationsService {
           status: PublicationStatus.PUBLISHED,
           externalPostId: identity.externalPostId,
           externalUrl: identity.externalUrl,
-          publishedAt: new Date(),
+          publishedAt: current.publishedAt ?? new Date(),
+          registeredAt: current.registeredAt ?? new Date(),
+          verificationStatus: current.verificationStatus ?? PublicationVerificationStatus.USER_ASSERTED,
+          registrationSource: current.registrationSource ?? PublicationRegistrationSource.USER_PASTED_URL,
+          monitoringMode: MonitoringMode.MANUAL_IMPORT,
+          lifecycleStatus: PublishedPostLifecycleStatus.REGISTERED,
+          monitoringStatus:
+            current.monitoringStatus === MonitoringRuntimeStatus.WAITING_REGISTRATION
+              ? MonitoringRuntimeStatus.READY
+              : current.monitoringStatus,
+          ...(await this.manualSourcePatch(tx, auth.tenantId, current)),
         },
         include: { platformAccount: true },
       });
     });
-    return toPublicPublication(publication, publication.platformAccount);
+    return this.present(publication, publication.platformAccount);
   }
 
   private async createManual(
     auth: AuthContext,
-    video: { id: string; projectId: string },
+    video: { id: string; projectId: string; scriptId: string | null },
     dto: CreatePublicationDto,
     meta: { idempotencyKey: string },
     workspaceId: string,
+    acceptance: { acceptedArtifactId: string; videoId: string; current: boolean; variant: string; status: string },
   ): Promise<PublicationPublic> {
+    const binding = sourceBindingFromAcceptance({
+      videoId: video.id,
+      scriptId: video.scriptId,
+      acceptance,
+    });
     let platformAccountId: string | null = null;
     if (dto.platformAccountId) {
       const account = await this.requireAccountHint(auth.tenantId, workspaceId, dto.platformAccountId, dto.platform);
@@ -344,16 +388,34 @@ export class PublicationsService {
           }
           return existing;
         }
+        const pendingForVideo = await tx.publication.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            videoId: video.id,
+            mode: PublicationMode.MANUAL,
+            status: PublicationStatus.PENDING,
+          },
+          include: { platformAccount: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (pendingForVideo) {
+          return pendingForVideo;
+        }
         return tx.publication.create({
           data: {
             tenantId: auth.tenantId,
             workspaceId,
             projectId: video.projectId,
-            videoId: video.id,
+            videoId: binding.videoId,
+            scriptId: binding.scriptId,
+            productionArtifactId: binding.productionArtifactId,
             platformAccountId,
             platform: dto.platform,
             mode: PublicationMode.MANUAL,
             status: PublicationStatus.PENDING,
+            verificationStatus: PublicationVerificationStatus.USER_ASSERTED,
+            registrationSource: PublicationRegistrationSource.USER_PASTED_URL,
+            monitoringMode: MonitoringMode.MANUAL_IMPORT,
             title: dto.title,
             description: dto.description ?? '',
             hashtags: dto.hashtags ?? [],
@@ -364,7 +426,7 @@ export class PublicationsService {
           include: { platformAccount: true },
         });
       });
-      return toPublicPublication(publication, publication.platformAccount);
+      return this.present(publication, publication.platformAccount);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = await this.prisma.publication.findUnique({
@@ -374,7 +436,7 @@ export class PublicationsService {
           include: { platformAccount: true },
         });
         if (existing && samePublicationRequest(existing, incoming)) {
-          return toPublicPublication(existing, existing.platformAccount);
+          return this.present(existing, existing.platformAccount);
         }
         throw new AppError(ErrorCode.IDEMPOTENCY_KEY_CONFLICT);
       }
@@ -473,6 +535,91 @@ export class PublicationsService {
       throw new AppError(ErrorCode.VIDEO_CONFLICT);
     }
     return video;
+  }
+
+  private async present(
+    publication: Parameters<typeof toPublicPublication>[0] & { platformAccount?: Parameters<typeof toPublicPublication>[1] },
+    account?: Parameters<typeof toPublicPublication>[1],
+  ): Promise<PublicationPublic> {
+    let sourceVideoTitle: string | null = null;
+    if (publication.videoId) {
+      const video = await this.prisma.video.findFirst({
+        where: { id: publication.videoId, deletedAt: null },
+        select: { scriptId: true },
+      });
+      if (video?.scriptId) {
+        const script = await this.prisma.script.findFirst({
+          where: { id: video.scriptId, deletedAt: null },
+          select: { title: true },
+        });
+        sourceVideoTitle = script?.title ?? null;
+      }
+    }
+    return toPublicPublication(publication, account ?? null, { sourceVideoTitle });
+  }
+
+  private async requireCurrentFinalAcceptance(
+    tenantId: string,
+    video: { id: string; status: VideoStatus },
+  ) {
+    const acceptance = await this.prisma.videoFinalAcceptance.findFirst({
+      where: { tenantId, videoId: video.id, current: true },
+    });
+    if (!acceptance || !isCurrentVerticalAcceptance(acceptance)) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    if (
+      !canUseVideoAsManualPublicationSource({
+        videoId: video.id,
+        status: video.status,
+        acceptance,
+      })
+    ) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    return acceptance;
+  }
+
+  private async manualSourcePatch(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    current: { videoId: string | null; scriptId: string | null; productionArtifactId: string | null },
+  ) {
+    if (!current.videoId) {
+      return {};
+    }
+    const video = await tx.video.findFirst({
+      where: { id: current.videoId, tenantId, deletedAt: null },
+      select: { id: true, status: true, scriptId: true },
+    });
+    if (!video) {
+      return {};
+    }
+    const acceptance = await tx.videoFinalAcceptance.findFirst({
+      where: { tenantId, videoId: video.id, current: true },
+    });
+    if (!acceptance) {
+      return {};
+    }
+    if (
+      !canUseVideoAsManualPublicationSource({
+        videoId: video.id,
+        status: video.status,
+        acceptance,
+      })
+    ) {
+      return {};
+    }
+    const binding = sourceBindingFromAcceptance({
+      videoId: video.id,
+      scriptId: video.scriptId,
+      acceptance,
+    });
+    return {
+      videoId: current.videoId ?? binding.videoId,
+      scriptId: current.scriptId ?? binding.scriptId,
+      productionArtifactId: current.productionArtifactId ?? binding.productionArtifactId,
+    };
   }
 
   private async requireAccountHint(

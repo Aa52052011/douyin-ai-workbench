@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   // Next 16 proxy clones /api rewrite bodies; default 10MB truncates library MP4 uploads.
   experimental: {
     proxyClientMaxBodySize: "128mb",
+    // Sync agent POSTs (account.positioning) can exceed the default ~30s rewrite proxy.
+    proxyTimeout: 240_000,
   },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${backend}/:path*` }];

@@ -83,7 +83,7 @@ export type PerformanceRecommendationV1 = {
   confidence: AttributionConfidenceV1;
   priority: RecommendationPriority;
   requiresHumanReview: true;
-  reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DEFERRED';
+  reviewStatus: 'PENDING' | 'APPROVED' | 'ACCEPTED' | 'REJECTED' | 'DEFERRED';
 };
 
 export type RetentionAvailabilityV1 = {

@@ -74,8 +74,10 @@ export function looksLikeTechnicalId(value: string): boolean {
   return false;
 }
 
-export function boundVideoLabel(hasBinding: boolean): string {
-  return hasBinding ? "已绑定成片" : "未绑定成片";
+export function boundVideoLabel(hasBinding: boolean, title?: string | null): string {
+  if (!hasBinding) return "未绑定成片";
+  const name = title?.trim();
+  return name || "已绑定成片";
 }
 
 export function monitoringPrimaryCta(input: { hasMetrics: boolean; hasAnalysis: boolean }): {
@@ -126,6 +128,7 @@ export function confidenceCopy(value?: string): string {
     case "LOW":
       return "依据有限";
     case "UNKNOWN":
+    case "INSUFFICIENT":
       return "证据不足";
     default:
       return "";
@@ -145,6 +148,22 @@ export function causalityCopy(value?: string): string {
 
 export function recommendationGroupLabel(raw?: string): string {
   switch (raw) {
+    case "CTA":
+      return "互动引导";
+    case "ENGAGEMENT":
+      return "互动";
+    case "SHAREABILITY":
+      return "分享结构";
+    case "CONTENT_DIRECTION":
+      return "内容方向";
+    case "FORMAT":
+      return "传播包装";
+    case "AUDIENCE":
+    case "ACCOUNT_POSITIONING":
+    case "POSITIONING":
+      return "账号定位";
+    case "DATA_INSUFFICIENT":
+      return "数据不足";
     case "CONTENT_PLANNING":
       return "内容方向";
     case "SCRIPT_GENERATION":
@@ -280,14 +299,139 @@ export function nowLocalDatetimeValue(date = new Date()): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function evidenceFromCounts(label: string, prev?: number | null, next?: number | null): string | null {
+export const INSUFFICIENT_EVIDENCE_COPY = "证据不足";
+
+type CountSnapshot = {
+  views?: number | null;
+  likes?: number | null;
+  comments?: number | null;
+  shares?: number | null;
+  favorites?: number | null;
+  newFollowers?: number | null;
+  completionRate?: number | null;
+  averageWatchTimeSeconds?: number | null;
+};
+
+type CountField = {
+  key: keyof CountSnapshot;
+  label: string;
+  percent: boolean;
+};
+
+const LIKE_FIELD: CountField = { key: "likes", label: "点赞", percent: true };
+const COMMENT_FIELD: CountField = { key: "comments", label: "评论", percent: true };
+const SHARE_FIELD: CountField = { key: "shares", label: "分享", percent: true };
+const FAVORITE_FIELD: CountField = { key: "favorites", label: "收藏", percent: true };
+const VIEW_FIELD: CountField = { key: "views", label: "播放量", percent: true };
+const FOLLOWER_FIELD: CountField = { key: "newFollowers", label: "新增粉丝", percent: false };
+
+const INSIGHT_COUNT_FIELD: Record<string, CountField> = {
+  HIGH_LIKE_RATE: LIKE_FIELD,
+  LOW_LIKE_RATE: LIKE_FIELD,
+  HIGH_COMMENT_RATE: COMMENT_FIELD,
+  LOW_COMMENT_RATE: COMMENT_FIELD,
+  HIGH_SHARE_RATE: SHARE_FIELD,
+  LOW_SHARE_RATE: SHARE_FIELD,
+  HIGH_FAVORITE_RATE: FAVORITE_FIELD,
+  LOW_FAVORITE_RATE: FAVORITE_FIELD,
+  HIGH_VIEW_RATE: VIEW_FIELD,
+  HIGH_VIEWS: VIEW_FIELD,
+  LOW_VIEWS: VIEW_FIELD,
+  HIGH_FOLLOWER_GROWTH: FOLLOWER_FIELD,
+  LOW_FOLLOWER_GROWTH: FOLLOWER_FIELD,
+  FOLLOWER_CHANGE: FOLLOWER_FIELD,
+};
+
+const ENGAGEMENT_FIELDS: CountField[] = [LIKE_FIELD, COMMENT_FIELD, SHARE_FIELD, FAVORITE_FIELD];
+const DECREASE_FIELDS: CountField[] = [VIEW_FIELD, LIKE_FIELD, COMMENT_FIELD, SHARE_FIELD, FAVORITE_FIELD, FOLLOWER_FIELD];
+
+function formatEvidenceNumber(value: number): string {
+  return String(value);
+}
+
+function percentChangeText(prev: number, next: number): string | null {
+  const raw = trendPercent(prev, next);
+  if (!raw) return null;
+  if (next - prev > 0 && !raw.startsWith("+") && !raw.startsWith("-")) {
+    return `+${raw}`;
+  }
+  return raw;
+}
+
+export function evidenceFromCounts(
+  label: string,
+  prev?: number | null,
+  next?: number | null,
+  options?: { percent?: boolean },
+): string | null {
   if (typeof prev === "number" && typeof next === "number") {
-    return `${label}从 ${prev.toLocaleString("zh-CN")} 增长到 ${next.toLocaleString("zh-CN")}`;
+    const delta = next - prev;
+    const deltaText = delta > 0 ? `+${delta}` : String(delta);
+    const pct = options?.percent === false ? null : percentChangeText(prev, next);
+    const change = pct ? `${deltaText} / ${pct}` : deltaText;
+    return `${label}从 ${formatEvidenceNumber(prev)} 到 ${formatEvidenceNumber(next)}（${change}）`;
   }
   if (typeof next === "number") {
-    return `当前${label}为 ${next.toLocaleString("zh-CN")}`;
+    return `当前${label}为 ${formatEvidenceNumber(next)}`;
   }
   return null;
+}
+
+function evidenceForField(field: CountField, prev?: CountSnapshot, next?: CountSnapshot): string | null {
+  return evidenceFromCounts(field.label, prev?.[field.key], next?.[field.key], { percent: field.percent });
+}
+
+function joinEvidence(parts: Array<string | null>): string | null {
+  const present = parts.filter((item): item is string => Boolean(item));
+  return present.length > 0 ? present.join("；") : null;
+}
+
+function completionEvidence(prev?: CountSnapshot, next?: CountSnapshot): string | null {
+  const prevRate = prev?.completionRate;
+  const nextRate = next?.completionRate;
+  if (!mayShowRetentionClaim(prevRate) && !mayShowRetentionClaim(nextRate)) {
+    return null;
+  }
+  const asPercent = (value: number) => `${Math.round(value * 1000) / 10}%`;
+  if (typeof prevRate === "number" && typeof nextRate === "number") {
+    return `完播率从 ${asPercent(prevRate)} 到 ${asPercent(nextRate)}`;
+  }
+  if (typeof nextRate === "number") {
+    return `当前完播率为 ${asPercent(nextRate)}`;
+  }
+  return null;
+}
+
+export function evidenceForInsight(
+  code: string | undefined,
+  prev?: CountSnapshot | null,
+  next?: CountSnapshot | null,
+): string {
+  if (!code) {
+    return INSUFFICIENT_EVIDENCE_COPY;
+  }
+  if (code === "STRONG_COMPLETION_RATE" || code === "WEAK_COMPLETION_RATE") {
+    return completionEvidence(prev ?? undefined, next ?? undefined) ?? INSUFFICIENT_EVIDENCE_COPY;
+  }
+  if (code === "HIGH_ENGAGEMENT_RATE" || code === "LOW_ENGAGEMENT_RATE") {
+    return (
+      joinEvidence(ENGAGEMENT_FIELDS.map((field) => evidenceForField(field, prev ?? undefined, next ?? undefined))) ??
+      INSUFFICIENT_EVIDENCE_COPY
+    );
+  }
+  if (code === "METRIC_DECREASE_DETECTED") {
+    const decreased = DECREASE_FIELDS.filter((field) => {
+      const a = prev?.[field.key];
+      const b = next?.[field.key];
+      return typeof a === "number" && typeof b === "number" && b < a;
+    }).map((field) => evidenceForField(field, prev ?? undefined, next ?? undefined));
+    return joinEvidence(decreased) ?? INSUFFICIENT_EVIDENCE_COPY;
+  }
+  const mapped = INSIGHT_COUNT_FIELD[code];
+  if (mapped) {
+    return evidenceForField(mapped, prev ?? undefined, next ?? undefined) ?? INSUFFICIENT_EVIDENCE_COPY;
+  }
+  return INSUFFICIENT_EVIDENCE_COPY;
 }
 
 export function likeRateEvidence(views?: number | null, likes?: number | null): string | null {
@@ -307,4 +451,21 @@ export function containsForbiddenAutoPublish(text: string): boolean {
 
 export function containsForbiddenPlatformVerifiedLie(text: string, real: boolean): boolean {
   return !real && /平台已验证/.test(text);
+}
+
+export function publicationTruthCopy(): string {
+  return "这条作品由你手动登记。系统尚未通过抖音接口验证发布状态。";
+}
+
+export function analysisReadinessCopy(snapshotCount: number, dataSufficiency?: string): string {
+  if (snapshotCount < 1) {
+    return "还没有表现数据，先录入你在抖音看到的数字。";
+  }
+  if (dataSufficiency === "INSUFFICIENT" || dataSufficiency === "INSUFFICIENT_DATA") {
+    return "目前数据还不够，建议再录入一组后再看 AI 复盘。";
+  }
+  if (snapshotCount === 1) {
+    return "目前只有一组数据。再录入一次后可以看到变化。";
+  }
+  return "可以查看当前表现。AI 复盘以系统已有分析结果为准。";
 }

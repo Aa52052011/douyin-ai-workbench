@@ -11,6 +11,8 @@ export function PublicationDataHub({
   monitoringCount = 0,
   analysisReadyCount = 0,
   reviewedCount = 0,
+  registeredCount = 0,
+  compact,
 }: {
   projectId: string;
   hasMetrics?: boolean;
@@ -20,10 +22,31 @@ export function PublicationDataHub({
   monitoringCount?: number;
   analysisReadyCount?: number;
   reviewedCount?: number;
+  registeredCount?: number;
+  compact?: boolean;
 }) {
   const publishHref = `/dashboard/projects/${projectId}/publish`;
   const monitorHref = `/dashboard/monitoring`;
   const analysisHref = `/dashboard/projects/${projectId}/performance`;
+  const monitoringShown = hasPublished ? Math.max(monitoringCount, 0) : monitoringCount;
+
+  if (compact) {
+    return (
+      <div className="mb-4" data-acf-publication-data-hub data-acf-publication-data-hub-v5 data-acf-publication-hub-compact>
+        <p className="acf-caption">
+          可发布 {pendingPublishCount} · 已登记 {registeredCount} · 监控中 {monitoringShown} · 待复盘 {analysisReadyCount} · 已复盘 {reviewedCount}
+        </p>
+        {pendingPublishCount > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link className="inline-flex rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-3 py-1.5 text-sm text-white" href={publishHref}>
+              待发布 / 手动发布
+            </Link>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   const next = hubNextAction({
     pendingPublishCount,
     pendingRegisterCount,
@@ -39,7 +62,7 @@ export function PublicationDataHub({
       <div className="mt-3 grid gap-2 sm:grid-cols-5">
         <HubBucket href={publishHref} label="待发布" count={pendingPublishCount} primary />
         <HubBucket href={publishHref} label="待登记" count={pendingRegisterCount} />
-        <HubBucket href={monitorHref} label="监控中" count={hasPublished ? Math.max(monitoringCount, 0) : monitoringCount} />
+        <HubBucket href={monitorHref} label="监控中" count={monitoringShown} />
         <HubBucket href={analysisHref} label="待复盘" count={analysisReadyCount} />
         <HubBucket href={analysisHref} label="已复盘" count={reviewedCount} />
       </div>

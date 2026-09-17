@@ -74,6 +74,8 @@ describe('MiniMaxTtsProvider', () => {
         expect(body.stream).toBe(false);
         expect(body.output_format).toBe('hex');
         expect(body.language_boost).toBe('Chinese');
+        expect(body.subtitle_enable).toBe(true);
+        expect(body.subtitle_type).toBe('sentence');
         expect(body.voice_setting.voice_id).toBe('Chinese (Mandarin)_Lyrical_Voice');
         expect(body.voice_setting.speed).toBe(1);
         expect(body.audio_setting.format).toBe('mp3');

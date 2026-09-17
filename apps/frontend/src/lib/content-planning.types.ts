@@ -53,6 +53,7 @@ export type PlanningFormState = {
   postsPerDay: number;
   additionalRequirements: string;
   platform: string;
+  ignoreAcceptedPerformanceFeedback: boolean;
 };
 
 export type TopicCardView = {

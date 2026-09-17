@@ -42,10 +42,15 @@ describe('PromptRegistry', () => {
       trendData: '无',
       campaignStrategy: '无',
       performanceFeedback: '{"dataState":"NONE"}',
+      acceptedPerformanceFeedback: '[]',
       positioning: '{}',
+      allowedContentPillars: '认知纠偏',
     });
     expect(rendered.version).toBe('v1');
     expect(rendered.systemPrompt).toContain('未使用实时趋势数据');
+    expect(rendered.systemPrompt).toContain('必须从用户提示中的「可用内容支柱名称」逐字复制');
+    expect(rendered.userPrompt).toContain('可用内容支柱名称');
+    expect(rendered.userPrompt).toContain('认知纠偏');
     expect(rendered.systemPrompt).toContain('历史表现反馈');
     expect(rendered.systemPrompt).toContain('CampaignStrategy');
     expect(rendered.systemPrompt).toContain('Current User Request');
@@ -54,7 +59,7 @@ describe('PromptRegistry', () => {
     expect(rendered.systemPrompt).toContain('不要生成最终 CTA 文案体系');
     expect(rendered.userPrompt).toContain('规划周期：7');
     expect(rendered.userPrompt).toContain('"dataState":"NONE"');
-    expect(rendered.userPrompt).toContain('推广策略 JSON');
+    expect(rendered.systemPrompt).toContain('用户已采纳的历史复盘建议');
   });
 
   it('loads script.generation:v1', () => {

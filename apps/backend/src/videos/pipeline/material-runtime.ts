@@ -203,7 +203,19 @@ async function loadCandidates(ctx: StageContext): Promise<ResolverAsset[]> {
     take: 80,
     orderBy: [{ usedCount: 'asc' }, { createdAt: 'desc' }],
   });
-  return rows.map((row) => ({
+  return rows
+    .filter((row) => {
+      const meta = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+      const videoId = typeof meta.videoId === 'string' ? meta.videoId : '';
+      const stage = typeof meta.stage === 'string' ? meta.stage : '';
+      if ((row.provider === 'wanx' || stage === 'visual') && videoId && videoId !== ctx.plan.videoId) {
+        return false;
+      }
+      return true;
+    })
+    .map((row) => ({
     id: row.id,
     tenantId: row.tenantId,
     workspaceId: row.workspaceId,

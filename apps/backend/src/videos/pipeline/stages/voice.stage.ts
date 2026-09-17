@@ -12,6 +12,7 @@ import { pipelineAssetDefaults } from '../../../assets/asset-library.js';
 import { reusableAssetIds } from '../asset-reuse.js';
 import { metadataNumber, metadataString } from '../visual-reuse.js';
 import { findReusableVoiceAsset, voiceTextFingerprint } from '../voice-reuse.js';
+import { speechMarksFromMetadata } from '../srt.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
 import { UsageMeteringService } from '../../../usage/usage-metering.service.js';
 import { getMeteringScope } from '../../../usage/metering-context.js';
@@ -35,6 +36,8 @@ export class VoiceGenerationStage {
     durationExact: number;
     provider: string;
     model?: string;
+    speechCues?: Array<{ text: string; start: number; end: number }>;
+    timingSource?: string;
     usage?: { audioCharacters: number; audioSeconds: number; audioSecondsExact?: number };
   }> {
     const output = asPipelineOutput(ctx.job.output);
@@ -50,6 +53,8 @@ export class VoiceGenerationStage {
         durationExact: metadataNumber(asset?.metadata, 'durationExact') ?? reusedDuration,
         provider: output.stages.voice?.provider ?? this.tts.id,
         model: output.stages.voice?.model,
+        speechCues: speechMarksFromMetadata(asset?.metadata),
+        timingSource: metadataString(asset?.metadata, 'timingSource'),
       };
     }
 
@@ -73,6 +78,8 @@ export class VoiceGenerationStage {
         durationExact: metadataNumber(crossJob.metadata, 'durationExact') ?? reusedDuration,
         provider: metadataString(crossJob.metadata, 'provider') ?? this.tts.id,
         model: metadataString(crossJob.metadata, 'model'),
+        speechCues: speechMarksFromMetadata(crossJob.metadata),
+        timingSource: metadataString(crossJob.metadata, 'timingSource'),
       };
     }
 
@@ -179,6 +186,8 @@ export class VoiceGenerationStage {
             voiceTextHash: voiceTextFingerprint(ctx.plan.voice.text),
             voiceType: ctx.plan.voice.voiceType ?? 'SYSTEM',
             resolvedVoiceId: ctx.plan.voice.resolvedVoiceId ?? 'sys.default',
+            timingSource: rendered.timingSource ?? 'none',
+            ...(rendered.speechCues?.length ? { speechCues: rendered.speechCues } : {}),
             ...(ctx.plan.voice.voiceProfileId ? { voiceProfileId: ctx.plan.voice.voiceProfileId } : {}),
             ...(rendered.usage?.providerDurationMs != null
               ? { providerDuration: rendered.usage.providerDurationMs }
@@ -207,6 +216,8 @@ export class VoiceGenerationStage {
       durationExact: rendered.usage?.audioSecondsExact ?? rendered.duration,
       provider: this.tts.id,
       model: rendered.usage?.model,
+      speechCues: rendered.speechCues,
+      timingSource: rendered.timingSource,
       usage: {
         audioCharacters: rendered.usage?.inputCharacters ?? ctx.plan.voice.text.length,
         audioSeconds: rendered.duration,

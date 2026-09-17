@@ -43,6 +43,7 @@ import {
   validateAccountPositioningOutput,
 } from '../definitions/account-positioning.agent.js';
 import {
+  diagnoseContentPlanOutput,
   finalizeContentPlanOutput,
   hasUsableTrendData,
   parseContentPlanningInput,
@@ -291,6 +292,7 @@ export class InProcessAgentExecutor implements AgentExecutor {
     const providedTrend = parsed.trendData ?? (await this.trends.getSnapshot({ platform: parsed.platform }));
     const usedTrendData = hasUsableTrendData(providedTrend ?? undefined);
     const feedback = parsed.performanceFeedback ?? emptyPerformanceFeedback();
+    const pillarNames = parsed.positioning.contentPillars.map((item) => item.name);
     const prompt = this.prompts.render(CONTENT_PLANNING_PROMPT, CONTENT_PLANNING_AGENT_VERSION, {
       planningDays: String(parsed.planningDays),
       postsPerDay: String(parsed.postsPerDay),
@@ -300,7 +302,9 @@ export class InProcessAgentExecutor implements AgentExecutor {
       trendData: usedTrendData ? JSON.stringify(providedTrend) : '无',
       campaignStrategy: parsed.campaignStrategy ? JSON.stringify(parsed.campaignStrategy) : '无',
       performanceFeedback: JSON.stringify(feedback),
+      acceptedPerformanceFeedback: JSON.stringify(parsed.acceptedPerformanceFeedback ?? []),
       positioning: JSON.stringify(parsed.positioning),
+      allowedContentPillars: pillarNames.join('\n'),
     });
     const promptMeta = payloadFingerprint({
       system: prompt.systemPrompt,
@@ -325,11 +329,32 @@ export class InProcessAgentExecutor implements AgentExecutor {
     });
     this.logger.debugPrompt(request.requestId, prompt, { length: model.text.length });
     const responseMeta = payloadFingerprint(model.text);
-    const parsedOutput = validateContentPlanOutput(parseModelJson(model.text), {
+    const expectedOutput = {
       planningDays: parsed.planningDays,
       postsPerDay: parsed.postsPerDay,
-      pillarNames: parsed.positioning.contentPillars.map((item) => item.name),
-    });
+      pillarNames,
+    };
+    let parsedOutput;
+    try {
+      parsedOutput = validateContentPlanOutput(parseModelJson(model.text), expectedOutput);
+    } catch (error) {
+      let outputIssue = 'INVALID_JSON';
+      try {
+        outputIssue = diagnoseContentPlanOutput(parseModelJson(model.text), expectedOutput);
+      } catch {
+        outputIssue = 'INVALID_JSON';
+      }
+      this.logger.log({
+        requestId: request.requestId,
+        agent: definition.id,
+        version: definition.version,
+        status: 'FAILED',
+        errorCode: 'AGENT_INVALID_OUTPUT',
+        outputIssue,
+        responseLength: responseMeta.length,
+      });
+      throw error;
+    }
     const output = finalizeContentPlanOutput(parsedOutput, parsed, usedTrendData);
 
     this.logger.log({

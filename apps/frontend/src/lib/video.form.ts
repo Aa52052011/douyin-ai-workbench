@@ -89,7 +89,7 @@ export function formatVideoTime(value?: string | null): string {
 
 export function humanizeVideoError(
   error: unknown,
-  action: "create" | "retry" | "export" | "poll" = "create",
+  action: "create" | "retry" | "export" | "poll" | "accept" = "create",
 ): string {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code: string }).code) : "";
   if (code === "VIDEO_SCRIPT_NOT_CONFIRMED" || code === "SCRIPT_NOT_FOUND") {
@@ -99,10 +99,14 @@ export function humanizeVideoError(
     return "当前视频状态不能重试。";
   }
   if (code === "VIDEO_EXPORT_NOT_AVAILABLE") {
-    return "视频导出失败，请稍后重试。";
+    return "视频下载失败，请重试。";
+  }
+  if (code === "VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE") {
+    return "确认失败，请重试";
   }
   if (action === "retry") return "视频重试失败，请稍后重试。";
-  if (action === "export") return "视频导出失败，请稍后重试。";
+  if (action === "export") return "视频下载失败，请重试。";
+  if (action === "accept") return "确认失败，请重试";
   if (action === "poll") return "暂时无法获取视频进度，请稍后刷新。";
   return "视频生成任务创建失败，请稍后重试。";
 }

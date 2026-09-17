@@ -134,7 +134,13 @@ describe('performance.analysis:v1 engine', () => {
     const out = runDeterministicPerformanceAnalysis(sampleInput());
     expect(out.recommendations.every((r) => r.requiresHumanReview === true)).toBe(true);
     expect(out.recommendations.every((r) => r.evidenceRefs.length > 0)).toBe(true);
-    const reviewed = applyRecommendationReview(out.recommendations, out.recommendations[0].recommendationId, 'APPROVE');
+    const reviewed = applyRecommendationReview(out.recommendations, out.recommendations[0].recommendationId, 'APPROVE', {
+      reviewedBy: 'user-1',
+      reviewedAt: '2026-09-15T15:00:00.000Z',
+    });
+    expect(reviewed.find((row) => row.recommendationId === out.recommendations[0].recommendationId)?.reviewStatus).toBe(
+      'ACCEPTED',
+    );
     expect(feedbackStatusFromRecommendations(reviewed)).not.toBe('GENERATED');
   });
 
@@ -149,6 +155,85 @@ describe('performance.analysis:v1 engine', () => {
       recommendations: [],
     });
     expect(handoff.schemaVersion).toBe('next.content-planning-feedback:v1');
+    expect(handoff.approvedRecommendations).toEqual([]);
+  });
+
+  it('two real snapshots produce metric-bound actionable recommendations', () => {
+    const out = runDeterministicPerformanceAnalysis(
+      sampleInput({
+        publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+        metricsSnapshots: [
+          {
+            id: 's1',
+            publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+            capturedAt: '2026-09-15T14:11:00.000Z',
+            source: 'MANUAL_ENTRY',
+            playCount: 96,
+            likeCount: 31,
+            commentCount: 10,
+            shareCount: 3,
+            collectCount: 3,
+            followerDelta: 0,
+          },
+          {
+            id: 's2',
+            publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+            capturedAt: '2026-09-15T14:20:00.000Z',
+            source: 'MANUAL_ENTRY',
+            playCount: 115,
+            likeCount: 42,
+            commentCount: 12,
+            shareCount: 5,
+            collectCount: 6,
+            followerDelta: 1,
+          },
+        ],
+      }),
+    );
+    const comments = out.recommendations.find((row) => row.recommendationId === 'rec-comments-cta');
+    expect(comments?.evidence).toEqual(['评论从 10 到 12（+2 / +20%）']);
+    expect(comments?.recommendedAction.includes('表现较好')).toBe(false);
+    expect(out.llmInvoked).toBe(false);
+    expect(out.recommendations.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('does not hide recommendations when content plan is missing', () => {
+    const out = runDeterministicPerformanceAnalysis(
+      sampleInput({
+        contentPlanSnapshot: { title: '' },
+        scriptSnapshot: { title: '' },
+        publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+        metricsSnapshots: [
+          {
+            id: 's1',
+            publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+            capturedAt: '2026-09-15T14:11:00.000Z',
+            source: 'MANUAL_ENTRY',
+            playCount: 96,
+            likeCount: 31,
+            commentCount: 10,
+            shareCount: 3,
+            collectCount: 3,
+            followerDelta: 0,
+          },
+          {
+            id: 's2',
+            publishedPostId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+            capturedAt: '2026-09-15T14:20:00.000Z',
+            source: 'MANUAL_ENTRY',
+            playCount: 115,
+            likeCount: 42,
+            commentCount: 12,
+            shareCount: 5,
+            collectCount: 6,
+            followerDelta: 1,
+          },
+        ],
+      }),
+    );
+    expect(out.recommendations.some((row) => row.recommendationId === 'rec-comments-cta')).toBe(true);
+    expect(out.recommendations.some((row) => row.recommendationId === 'rec-favorites-content')).toBe(true);
+    expect(out.recommendations.some((row) => row.recommendationId === 'rec-shares-shareability')).toBe(true);
   });
 
   it('preserves analysis history conceptually via distinct hashes', () => {

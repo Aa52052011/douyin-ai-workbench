@@ -1,20 +1,29 @@
 import type { PresentedNextAction } from "../lib/ux/next-action-v2";
 import Link from "next/link";
-import { Card } from "./ui/card";
+import { ActionCard } from "./ui/card";
 
-export function NextActionCard({ action }: { action: PresentedNextAction }) {
+export function NextActionCard({
+  action,
+  stageLabel,
+  ctaLabel = "继续下一步",
+}: {
+  action: PresentedNextAction;
+  stageLabel?: string;
+  ctaLabel?: string;
+}) {
   return (
-    <Card className="mb-6" data-acf-next-action>
-      <p className="acf-caption">当前最重要的一步</p>
-      <p className="acf-card-title mt-1">{action.label}</p>
+    <ActionCard className="acf-stage-current mb-6" data-acf-next-action data-acf-current-stage>
+      <p className="acf-caption">当前阶段</p>
+      {stageLabel ? <p className="acf-card-title mt-1">{stageLabel}</p> : <p className="acf-card-title mt-1">{action.label}</p>}
       {action.description ? <p className="acf-body-secondary mt-1">{action.description}</p> : null}
-      <p className="acf-caption mt-2">{action.stepCopy}</p>
+      <p className="acf-body-secondary mt-2">下一步：{action.label}</p>
       <Link
-        className="mt-3 inline-flex rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-3 py-1.5 text-sm text-white"
+        className="mt-3 inline-flex min-h-9 items-center rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-4 text-sm text-[var(--acf-text-inverse)]"
         href={action.href}
+        aria-label={ctaLabel}
       >
-        {action.ctaLabel ?? action.label}
+        {ctaLabel}
       </Link>
-    </Card>
+    </ActionCard>
   );
 }

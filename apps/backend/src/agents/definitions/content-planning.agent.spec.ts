@@ -3,6 +3,8 @@ import { ErrorCode } from '../../common/errors/app-error.js';
 import { parseModelJson } from './account-positioning.agent.js';
 import { MOCK_ACCOUNT_POSITIONING_OUTPUT } from './account-positioning.fixture.js';
 import {
+  canonicalizePillarName,
+  diagnoseContentPlanOutput,
   parseContentPlanningInput,
   stampTopicIds,
   validateContentPlanOutput,
@@ -46,6 +48,26 @@ describe('content.planning input/output', () => {
     });
     expect(parsed.performanceFeedback?.dataState).toBe('NONE');
     expect(parseContentPlanningInput(validInput).performanceFeedback).toBeUndefined();
+  });
+
+  it('accepts acceptedPerformanceFeedback as optional planning reference', () => {
+    const parsed = parseContentPlanningInput({
+      ...validInput,
+      acceptedPerformanceFeedback: [
+        {
+          recommendationId: 'rec-comments-cta',
+          category: 'CTA',
+          recommendedAction: '下一条测试更具体的评论问题',
+          supportingEvidence: ['评论从 10 到 12（+2 / +20%）'],
+          sourcePublicationId: '01a0a54e-5f54-78c1-a558-76a8d5fcf686',
+          sourceAnalysisId: 'analysis-1',
+          reviewedAt: '2026-09-15T15:00:00.000Z',
+        },
+      ],
+    });
+    expect(parsed.acceptedPerformanceFeedback).toHaveLength(1);
+    expect(parsed.acceptedPerformanceFeedback?.[0]?.recommendationId).toBe('rec-comments-cta');
+    expect(parseContentPlanningInput(validInput).acceptedPerformanceFeedback).toBeUndefined();
   });
 
   it('accepts optional learningContext without changing output keys', () => {
@@ -248,6 +270,79 @@ describe('content.planning input/output', () => {
     const stamped = stampTopicIds(validated.topics);
     expect(stamped.every((topic) => topic.id.includes('-'))).toBe(true);
     expect(stamped[0].id).not.toBe(validated.topics[0].id);
+  });
+
+  it('canonicalizes unambiguous abbreviated pillars, numeric strings, and Chinese priority', () => {
+    const mock = buildMockContentPlanOutput();
+    const expected = {
+      planningDays: 7,
+      postsPerDay: 1,
+      pillarNames: MOCK_ACCOUNT_POSITIONING_OUTPUT.contentPillars.map((item) => item.name),
+    };
+    const coerced = {
+      ...mock,
+      usedTrendData: 'false',
+      pillarAllocation: mock.pillarAllocation.map((row) => ({
+        ...row,
+        pillarName: row.pillarName.slice(0, 2),
+        percentage: String(row.percentage),
+        topicCount: String(row.topicCount),
+      })),
+      topics: mock.topics.map((topic, index) => ({
+        ...topic,
+        dayIndex: String(topic.dayIndex),
+        priority: index === 0 ? '高' : index === 1 ? '中' : '低',
+        contentPillar: topic.contentPillar.slice(0, 2),
+      })),
+    };
+    const validated = validateContentPlanOutput(coerced, expected);
+    expect(validated.topics.every((topic) => expected.pillarNames.includes(topic.contentPillar))).toBe(true);
+    expect(validated.topics[0].dayIndex).toBe(1);
+    expect(validated.topics[0].priority).toBe('high');
+    expect(validated.usedTrendData).toBe(false);
+    const withLooseTypes = validateContentPlanOutput(
+      {
+        ...mock,
+        topics: mock.topics.map((topic, index) => ({
+          ...topic,
+          keywords: '职场新人,清单',
+          estimatedDuration: 45,
+          scheduledDate: index === 0 ? '2026-09-15T08:00:00.000Z' : '本周五',
+          targetAudience: { description: topic.targetAudience },
+        })),
+      },
+      expected,
+    );
+    expect(withLooseTypes.topics[0].keywords).toEqual(['职场新人', '清单']);
+    expect(withLooseTypes.topics[0].estimatedDuration).toBe('45');
+    expect(withLooseTypes.topics[0].scheduledDate).toBe('2026-09-15');
+    expect(withLooseTypes.topics[1].scheduledDate).toBeUndefined();
+    expect(canonicalizePillarName('认知', expected.pillarNames)).toBe('认知纠偏');
+    expect(canonicalizePillarName('新支柱', expected.pillarNames)).toBeNull();
+    expect(diagnoseContentPlanOutput({ title: 'only' }, expected)).toBe('MISSING_FIELD:summary');
+  });
+
+  it('still rejects invented pillars and wrong topic counts', () => {
+    const mock = buildMockContentPlanOutput();
+    const expected = {
+      planningDays: 7,
+      postsPerDay: 1,
+      pillarNames: MOCK_ACCOUNT_POSITIONING_OUTPUT.contentPillars.map((item) => item.name),
+    };
+    expectCode(
+      () =>
+        validateContentPlanOutput(
+          {
+            ...mock,
+            topics: mock.topics.map((topic) => ({ ...topic, contentPillar: '全新支柱' })),
+          },
+          expected,
+        ),
+      ErrorCode.AGENT_INVALID_OUTPUT,
+    );
+    expect(diagnoseContentPlanOutput({ ...mock, topics: mock.topics.slice(0, 3) }, expected)).toBe(
+      'TOPIC_COUNT:3!=7',
+    );
   });
 
   it('rejects non-JSON and schema-invalid output', () => {

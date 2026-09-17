@@ -32,7 +32,7 @@ export function TrendCardsV5({
           const delta = trendDelta(item.prev, item.next);
           const pct = trendPercent(item.prev, item.next);
           return (
-            <div key={item.label} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <div key={item.label} className="rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
               <p className="text-xs text-neutral-500">{item.label}</p>
               <p className="text-lg font-medium">{delta == null ? "—" : delta > 0 ? `+${delta}` : String(delta)}</p>
               {pct ? <p className="text-xs text-neutral-500">{pct}</p> : null}

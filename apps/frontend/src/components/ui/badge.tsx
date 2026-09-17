@@ -16,11 +16,11 @@ export function Badge({ children, className }: { children: ReactNode; className?
 }
 
 const toneClass = {
-  success: "bg-[var(--acf-success-subtle)] text-[var(--acf-success)]",
-  progress: "bg-[var(--acf-info-subtle)] text-[var(--acf-info)]",
-  danger: "bg-[var(--acf-danger-subtle)] text-[var(--acf-danger)]",
-  warning: "bg-[var(--acf-warning-subtle)] text-[var(--acf-warning)]",
-  neutral: "bg-[var(--acf-surface-subtle)] text-[var(--acf-text-secondary)]",
+  success: "bg-[var(--acf-success-soft)] text-[var(--acf-success)]",
+  progress: "bg-[var(--acf-brand-soft)] text-[var(--acf-brand)]",
+  danger: "bg-[var(--acf-danger-soft)] text-[var(--acf-danger)]",
+  warning: "bg-[var(--acf-warning-soft)] text-[var(--acf-warning)]",
+  neutral: "bg-[var(--acf-surface-muted)] text-[var(--acf-text-secondary)]",
 } as const;
 
 export function ProductStatusBadge({ status }: { status: string | null | undefined }) {

@@ -28,9 +28,15 @@ function run() {
   assert.match(planning, /确认内容计划/);
   assert.match(planning, /为这个选题生成脚本/);
   assert.match(planning, /data-acf-planning-reused-positioning|positioningSummary/);
+  assert.match(planning, /showIgnoreControl/);
+  assert.match(read("src/lib/content-planning.api.ts"), /recoverContentPlan/);
+  assert.match(read("src/lib/content-planning.api.ts"), /POSITIONING_POLL_ATTEMPTS/);
 
   const planningForm = read("src/components/content-planning-form.tsx");
+  const acceptedNotice = read("src/components/planning-accepted-feedback-notice.tsx");
   assert.match(planningForm, /已使用账号定位/);
+  assert.match(acceptedNotice, /已参考上一轮发布表现/);
+  assert.match(acceptedNotice, /本轮不参考这些建议/);
   assert.equal(planningForm.includes("请填写行业"), false);
 
   const topics = read("src/components/content-planning-topics.tsx");

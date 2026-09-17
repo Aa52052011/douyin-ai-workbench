@@ -3,40 +3,48 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AiReviewWorkspaceV1 } from "../../../../components/ai-review-workspace-v1";
 import { EmptyState } from "../../../../components/empty-state";
-import { FeedbackHandoffUXV5 } from "../../../../components/feedback-handoff-ux-v5";
 import { MetricsHistoryV5 } from "../../../../components/metrics-history-v5";
+import { MetricsSummaryV2 } from "../../../../components/metrics-summary-v2";
+import { MetricsTrendV1 } from "../../../../components/metrics-trend-v1";
 import { PageHeader } from "../../../../components/page-header";
 import { PerformanceMetricForm } from "../../../../components/performance-metric-form";
 import { PublishedPostSummaryV5 } from "../../../../components/published-post-summary-v5";
-import { RecommendationReviewV5, type RecommendationReviewItem } from "../../../../components/recommendation-review-v5";
-import { TrendCardsV5 } from "../../../../components/trend-cards-v5";
+import { RecommendationReviewV5 } from "../../../../components/recommendation-review-v5";
+import { WorkflowBackNavV1 } from "../../../../components/workflow-back-nav-v1";
 import { ProductErrorState, TechnicalDetailsPanel } from "../../../../components/ui/error-state";
 import { useAuth } from "../../../../lib/auth-context";
 import { listMonitoringPosts, type PublishedPostRecord } from "../../../../lib/monitoring.api";
 import { createManualMetrics, getMetricsInsights, listPublicationMetrics } from "../../../../lib/performance.api";
+import {
+  loadOrCreatePerformanceAnalysis,
+  persistRecommendationReviewAndReload,
+  type PerformanceAnalysisRecord,
+} from "../../../../lib/performance-analysis.api";
 import { emptyMetricForm, formatObservedAt, humanizeMetricsError, sortSnapshotsNewestFirst } from "../../../../lib/performance.form";
 import type { MetricFormState, MetricSnapshotRecord, PerformanceInsightResult } from "../../../../lib/performance.types";
 import {
-  humanizePerformanceInsight,
-  insufficientDataCopy,
-  latestMetricCards,
   metricHistoryRows,
   parseInsights,
   parseMetricsList,
 } from "../../../../lib/performance.view";
+import {
+  REVIEW_SAVE_FAILED,
+  decisionsFromAnalysis,
+  reviewItemsFromAnalysis,
+} from "../../../../lib/performance-review.view";
 import { getPublication } from "../../../../lib/publication.api";
 import type { PublicationRecord } from "../../../../lib/publication.types";
 import { parsePublicationRecord } from "../../../../lib/publication.view";
 import { toProductError } from "../../../../lib/ux/product-error";
 import {
-  CONFIDENCE_TOOLTIP,
+  LIMITED_SAMPLE_COPY,
+  observationContext,
+  reviewCountsFromItems,
+} from "../../../../lib/ai-review.workspace";
+import {
   analysisErrorCopy,
-  confidenceCopy,
-  evidenceFromCounts,
-  findingTypeCopy,
-  insufficientReviewCopy,
-  likeRateEvidence,
   mayShowRetentionClaim,
   monitoringPrimaryCta,
   monitoringTitle,
@@ -50,35 +58,6 @@ function performanceHrefIfPossibleLocal(projectId: string | null | undefined, pu
   return `/dashboard/projects/${projectId}/performance?publicationId=${encodeURIComponent(publicationId)}`;
 }
 
-function recommendationsFromInsights(
-  insights: PerformanceInsightResult | null,
-  snapshots: MetricSnapshotRecord[],
-): RecommendationReviewItem[] {
-  const sorted = sortSnapshotsNewestFirst(snapshots);
-  const latest = sorted[0];
-  const prev = sorted[1];
-  const evidence =
-    evidenceFromCounts("播放量", prev?.views, latest?.views) ||
-    likeRateEvidence(latest?.views, latest?.likes) ||
-    "依据来自你录入的历史数据记录";
-  return (insights?.insights ?? [])
-    .map((item, index) => {
-      const title = humanizePerformanceInsight(item.code);
-      if (!title) return null;
-      const rec: RecommendationReviewItem = {
-        id: item.code ?? `rec-${index}`,
-        title,
-        reason: "基于目前数据，这条内容还有以下可优化空间",
-        evidence,
-        confidence: item.confidence,
-        type: item.severity === "positive" ? "STRENGTH" : item.severity === "negative" ? "WEAKNESS" : "OBSERVATION",
-        group: item.category,
-      };
-      return rec;
-    })
-    .filter((item): item is RecommendationReviewItem => item !== null);
-}
-
 export default function MonitoringDetailPage() {
   const { publishedPostId } = useParams<{ publishedPostId: string }>();
   const { accessToken } = useAuth();
@@ -86,15 +65,16 @@ export default function MonitoringDetailPage() {
   const [publication, setPublication] = useState<PublicationRecord | null>(null);
   const [snapshots, setSnapshots] = useState<MetricSnapshotRecord[]>([]);
   const [insights, setInsights] = useState<PerformanceInsightResult | null>(null);
+  const [analysis, setAnalysis] = useState<PerformanceAnalysisRecord | null>(null);
   const [error, setError] = useState<ReturnType<typeof toProductError> | null>(null);
   const [loadNote, setLoadNote] = useState<string | null>(null);
   const [form, setForm] = useState<MetricFormState>(emptyMetricForm(nowLocalDatetimeValue()));
   const [composing, setComposing] = useState(false);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewCardError, setReviewCardError] = useState<{ id: string; message: string } | null>(null);
+  const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [decisions, setDecisions] = useState<Record<string, "approve" | "reject" | "defer">>({});
-  const [tab, setTab] = useState<"data" | "review">("data");
 
   useEffect(() => {
     if (!accessToken || !publishedPostId) return;
@@ -127,6 +107,15 @@ export default function MonitoringDetailPage() {
           if (insightResult.status === "fulfilled") {
             setInsights(parseInsights(insightResult.value));
           }
+          const parsedSnapshots = listResult.status === "fulfilled" ? parseMetricsList(listResult.value) ?? [] : [];
+          if (parsedSnapshots.length > 0) {
+            try {
+              const loaded = await loadOrCreatePerformanceAnalysis(accessToken, pub.id);
+              if (!cancelled) setAnalysis(loaded);
+            } catch {
+              if (!cancelled) setLoadNote("复盘内容加载失败。可以稍后重试。");
+            }
+          }
         }
       } catch {
         if (!cancelled) {
@@ -142,17 +131,40 @@ export default function MonitoringDetailPage() {
   const publicationId = publication?.id ?? publishedPostId;
   const projectId = publication?.projectId ?? item?.projectId ?? null;
   const hasCurrentMetrics = snapshots.length > 0 || Boolean(item?.latestMetrics);
-  const recs = recommendationsFromInsights(insights, snapshots);
   const latest = sortSnapshotsNewestFirst(snapshots)[0] ?? null;
   const previous = sortSnapshotsNewestFirst(snapshots)[1] ?? null;
   const hasRetention = mayShowRetentionClaim(latest?.completionRate) || mayShowRetentionClaim(latest?.averageWatchTimeSeconds);
+  const recs = reviewItemsFromAnalysis(analysis);
+  const decisions = decisionsFromAnalysis(analysis);
+  const counts = reviewCountsFromItems(recs);
   const hasAnalysis = recs.length > 0;
   const cta = monitoringPrimaryCta({ hasMetrics: hasCurrentMetrics, hasAnalysis });
-  const cards = latestMetricCards(latest);
   const history = metricHistoryRows(snapshots, publication?.publishedAt ?? item?.publishedAt);
-  const approvedCount = Object.values(decisions).filter((value) => value === "approve").length;
   const analysisErr = analysisErrorCopy();
   const perfHref = performanceHrefIfPossibleLocal(projectId, publicationId);
+  const sample = observationContext(snapshots);
+
+  function persistReview(id: string, action: "approve" | "reject" | "defer") {
+    if (!accessToken) return;
+    if (!analysis?.id) {
+      setReviewCardError({ id, message: REVIEW_SAVE_FAILED });
+      return;
+    }
+    const previous = analysis;
+    setReviewCardError(null);
+    setPendingReviewId(id);
+    const mapped = action === "approve" ? "APPROVE" : action === "reject" ? "REJECT" : "DEFER";
+    void persistRecommendationReviewAndReload(accessToken, analysis.id, id, mapped)
+      .then((updated) => {
+        setAnalysis(updated);
+        setPendingReviewId(null);
+      })
+      .catch(() => {
+        setAnalysis(previous);
+        setReviewCardError({ id, message: REVIEW_SAVE_FAILED });
+        setPendingReviewId(null);
+      });
+  }
 
   function submitMetrics() {
     if (!accessToken || !publication) return;
@@ -167,6 +179,10 @@ export default function MonitoringDetailPage() {
         if (insightResult.status === "fulfilled") {
           setInsights(parseInsights(insightResult.value));
         }
+        return loadOrCreatePerformanceAnalysis(accessToken, publication.id);
+      })
+      .then((loaded) => {
+        setAnalysis(loaded);
         setForm(emptyMetricForm(nowLocalDatetimeValue()));
         setComposing(false);
         setPending(false);
@@ -179,6 +195,11 @@ export default function MonitoringDetailPage() {
 
   return (
     <div className="space-y-6 px-3 py-6 md:px-4" data-acf-published-post-detail-v5>
+      <WorkflowBackNavV1
+        page={composing ? "metric-entry" : "publication-detail"}
+        projectId={projectId}
+        publicationId={publicationId}
+      />
       <PageHeader
         title="作品详情"
         description="作品信息、当前数据、历史数据、AI复盘与优化建议在同一页继续。"
@@ -193,7 +214,7 @@ export default function MonitoringDetailPage() {
               {pagePrimaryCta("metrics").label}
             </button>
           ) : (
-            <button className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" type="button" onClick={() => setTab("review")}>
+            <button className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" type="button" onClick={() => document.getElementById("ai-review-section")?.scrollIntoView({ behavior: "smooth" })}>
               {cta.kind === "start-review" ? pagePrimaryCta("analyze").label : pagePrimaryCta("view").label}
             </button>
           )
@@ -217,23 +238,20 @@ export default function MonitoringDetailPage() {
               platformPostId: item?.platformPostId,
               platformUrl: item?.platformUrl ?? publication?.externalUrl,
             })}
-            publishedAtLabel={formatObservedAt(publication?.publishedAt ?? item?.publishedAt) || undefined}
+            publishedAtLabel={formatObservedAt(publication?.registeredAt ?? publication?.publishedAt ?? item?.publishedAt) || undefined}
             url={publication?.externalUrl ?? item?.platformUrl}
-            boundVideo={Boolean(item?.productionArtifactId)}
+            boundVideo={Boolean(publication?.videoId || publication?.productionArtifactId || item?.videoId || item?.productionArtifactId)}
+            boundVideoTitle={
+              Boolean(publication?.videoId || publication?.productionArtifactId || item?.videoId || item?.productionArtifactId)
+                ? publication?.sourceVideoTitle || publication?.title || item?.title
+                : null
+            }
             monitoringStatus={item?.monitoringStatus ?? (publication ? "REGISTERED" : undefined)}
           />
           <section className="space-y-3">
-            <h2 className="text-base font-medium">当前数据</h2>
             <p className="text-sm text-neutral-600">当前数据由你手动录入。不会自动抓取抖音数据。</p>
-            {cards.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {cards.map((card) => (
-                  <div key={card.label} className="rounded-xl border border-neutral-200 bg-white p-4">
-                    <p className="text-xs text-neutral-500">{card.label}</p>
-                    <p className="text-lg font-medium">{card.value}</p>
-                  </div>
-                ))}
-              </div>
+            {latest ? (
+              <MetricsSummaryV2 latest={latest} previous={previous} />
             ) : (
               <EmptyState
                 title="还没有表现数据"
@@ -242,10 +260,14 @@ export default function MonitoringDetailPage() {
               />
             )}
           </section>
-          <TrendCardsV5
-            previous={previous ? { views: previous.views, likes: previous.likes, comments: previous.comments, shares: previous.shares } : null}
-            latest={latest ? { views: latest.views, likes: latest.likes, comments: latest.comments, shares: latest.shares } : null}
-          />
+          <MetricsTrendV1 snapshots={snapshots} />
+          {hasCurrentMetrics ? (
+            <section className="space-y-1">
+              <p className="text-sm">数据记录：{sample.countLabel}</p>
+              {sample.spanLabel ? <p className="text-sm">观察间隔：{sample.spanLabel}</p> : null}
+              <p className="acf-caption">{LIMITED_SAMPLE_COPY}</p>
+            </section>
+          ) : null}
           {composing && publication ? (
             <PerformanceMetricForm
               form={form}
@@ -265,50 +287,21 @@ export default function MonitoringDetailPage() {
             </p>
           ) : null}
           <MetricsHistoryV5 rows={history} expandedIndex={expandedIndex} onToggle={setExpandedIndex} />
-          <section className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4" data-acf-performance-analysis-page-v5>
-            <h2 className="text-base font-medium">AI复盘</h2>
-            <div className="flex gap-2">
-              <button className="rounded-md border px-3 py-1.5 text-sm" type="button" onClick={() => setTab("data")}>
-                数据摘要
-              </button>
-              <button className="rounded-md border px-3 py-1.5 text-sm" type="button" onClick={() => setTab("review")}>
-                优化建议
-              </button>
-            </div>
-            {!hasCurrentMetrics ? (
-              <p className="text-sm">{insufficientReviewCopy()}</p>
-            ) : recs.length === 0 ? (
-              <p className="text-sm">{insufficientDataCopy()}</p>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <p>基于目前数据，这条内容还有以下可优化空间。</p>
-                {insights?.dataSufficiency === "STALE_BY_NEWER_METRICS" || item?.monitoringStatus === "STALE" ? (
-                  <p>{staleAnalysisCopy()}</p>
-                ) : null}
-                {recs.map((rec) => (
-                  <div key={`finding-${rec.id}`}>
-                    <p>
-                      {findingTypeCopy(rec.type)}：{rec.title}
-                    </p>
-                    <p>依据：{rec.evidence}</p>
-                    {confidenceCopy(rec.confidence) ? (
-                      <p title={CONFIDENCE_TOOLTIP}>可信程度：{confidenceCopy(rec.confidence)}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-            {tab === "review" ? (
-              <>
-                <RecommendationReviewV5
-                  items={recs}
-                  decisions={decisions}
-                  singlePost
-                  onDecide={(id, action) => setDecisions((current) => ({ ...current, [id]: action }))}
-                />
-                <FeedbackHandoffUXV5 approvedCount={approvedCount} totalCount={recs.length} />
-              </>
+          <section id="ai-review-section" className="space-y-3" data-acf-performance-analysis-page-v5>
+            {insights?.dataSufficiency === "STALE_BY_NEWER_METRICS" || item?.monitoringStatus === "STALE" ? (
+              <p>{staleAnalysisCopy()}</p>
             ) : null}
+            <AiReviewWorkspaceV1
+              hasMetrics={hasCurrentMetrics}
+              hasAnalysis={Boolean(analysis)}
+              recs={recs}
+              decisions={decisions}
+              singlePost
+              pendingReviewId={pendingReviewId}
+              reviewCardError={reviewCardError}
+              analysisLoadError={loadNote?.includes("复盘内容加载失败") ? loadNote : null}
+              onDecide={persistReview}
+            />
           </section>
           {perfHref ? (
             <p className="text-sm">

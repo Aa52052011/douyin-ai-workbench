@@ -16,6 +16,7 @@ import {
   mountWriteOperations,
   resolveStrategyQuery,
   scriptHref,
+  selectDisplayPlan,
   usableStrategies,
   validatePlanningDays,
   validatePostsPerDay,
@@ -141,8 +142,20 @@ function run() {
     postsPerDay: 2,
     additionalRequirements: "",
     platform: "douyin",
+    ignoreAcceptedPerformanceFeedback: false,
   });
   assert.equal("strategyId" in noStrategyBody, false);
+  assert.equal("ignoreAcceptedPerformanceFeedback" in noStrategyBody, false);
+  const ignoredBody = createPlanBody("proj-1", {
+    positioningRunId: "pos-new",
+    strategyId: "",
+    planningDays: 7,
+    postsPerDay: 2,
+    additionalRequirements: "",
+    platform: "douyin",
+    ignoreAcceptedPerformanceFeedback: true,
+  });
+  assert.equal(ignoredBody.ignoreAcceptedPerformanceFeedback, true);
   assert.equal("campaignStrategy" in noStrategyBody, false);
   assert.equal("positioning" in noStrategyBody, false);
   assert.equal(noStrategyBody.positioningRunId, "pos-new");
@@ -190,9 +203,21 @@ function run() {
   assert.equal(viewModelHasPerformanceFeedback(view), false);
   assert.equal(JSON.stringify(view).includes("campaignStrategy"), false);
   assert.equal(canConfirmPlan("DRAFT") && !canGenerateScript("DRAFT"), true);
-  assert.equal(canGeneratePlan({ ...noStrategyBody, strategyId: "", additionalRequirements: "", positioningRunId: "x", planningDays: 7, postsPerDay: 2, platform: "douyin" }), true);
+  assert.equal(canGeneratePlan({ ...noStrategyBody, strategyId: "", additionalRequirements: "", positioningRunId: "x", planningDays: 7, postsPerDay: 2, platform: "douyin", ignoreAcceptedPerformanceFeedback: false }), true);
   assert.deepEqual(mountWriteOperations(), []);
   assert.equal(latestPlan([{ id: "a", version: 1, status: "DRAFT", createdAt: "2026-01-01T00:00:00.000Z" }, { id: "b", version: 3, status: "DRAFT", createdAt: "2026-01-03T00:00:00.000Z" }])?.id, "b");
+  const v1v2 = selectDisplayPlan([
+    { id: "v1", version: 1, status: "CONFIRMED", createdAt: "2026-01-01T00:00:00.000Z" },
+    { id: "v2", version: 2, status: "CONFIRMED", createdAt: "2026-01-02T00:00:00.000Z" },
+  ]);
+  assert.equal(v1v2.display?.id, "v2");
+  assert.equal(v1v2.draftPriority, false);
+  const confirmedPlusDraft = selectDisplayPlan([
+    { id: "v2", version: 2, status: "CONFIRMED", createdAt: "2026-01-02T00:00:00.000Z" },
+    { id: "v3", version: 3, status: "DRAFT", createdAt: "2026-01-03T00:00:00.000Z" },
+  ]);
+  assert.equal(confirmedPlusDraft.display?.id, "v3");
+  assert.equal(confirmedPlusDraft.draftPriority, true);
   assert.equal(humanizePlanningError({ code: "CAMPAIGN_STRATEGY_NOT_USABLE" }), "所选推广策略已不可用，请重新选择。");
   assert.equal(humanizePlanningError({ code: "CONTENT_PLAN_POSITIONING_REQUIRED" }), "所选账号定位已不可用，请重新选择。");
 

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ContextualGuidanceV1 } from "./contextual-guidance-v1";
 import {
   nextProductionStage,
@@ -41,7 +40,7 @@ export function ProductionContextHeaderV3({
 }
 
 export function WorkflowFooterV3({
-  projectId,
+  projectId: _projectId,
   stageId,
 }: {
   projectId: string;
@@ -49,16 +48,9 @@ export function WorkflowFooterV3({
 }) {
   const current = PRODUCTION_STAGES_V3.find((item) => item.id === stageId);
   const next = nextProductionStage(stageId);
-  const prev = PRODUCTION_STAGES_V3[PRODUCTION_STAGES_V3.findIndex((item) => item.id === stageId) - 1];
   return (
     <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-3 text-sm" data-acf-workflow-footer>
-      {prev ? (
-        <Link className="text-neutral-600 underline" href={prev.href(projectId)}>
-          返回{prev.label}（已写入的内容还在）
-        </Link>
-      ) : (
-        <span />
-      )}
+      <span />
       <span className="text-neutral-800">当前：{current?.label}</span>
       {next ? (
         <span className="text-neutral-600">下一步：{next.label}</span>

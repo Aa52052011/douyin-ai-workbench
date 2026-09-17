@@ -12,6 +12,8 @@ const SCENE: ProductionScene = {
   narration: '旁白',
   subtitle: '字幕',
   visualSuggestion: '清单卡片',
+  visualIntent: '旁白',
+  requiredEvidence: '清单卡片',
   visualPrompt: '竖屏静帧',
   visualSourceType: 'COLOR_BACKGROUND',
   durationBudget: 2,

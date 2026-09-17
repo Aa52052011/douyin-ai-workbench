@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
@@ -51,4 +52,8 @@ export class CreateContentPlanDto {
   @IsOptional()
   @IsUUID()
   strategyId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  ignoreAcceptedPerformanceFeedback?: boolean;
 }

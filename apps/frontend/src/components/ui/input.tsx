@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes 
 import { cn } from "../../lib/ux/cn";
 
 const fieldClass =
-  "w-full rounded-[var(--acf-radius-sm)] border border-[var(--acf-border-strong)] bg-[var(--acf-surface)] px-3 py-2 text-sm text-[var(--acf-text)] placeholder:text-[var(--acf-text-muted)] disabled:bg-[var(--acf-surface-subtle)] disabled:text-[var(--acf-text-disabled)]";
+  "acf-field w-full rounded-[var(--acf-radius-sm)] border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm text-[var(--acf-text)] placeholder:text-[var(--acf-text-muted)] focus-visible:border-[var(--acf-brand)] disabled:bg-[var(--acf-surface-muted)] disabled:text-[var(--acf-text-disabled)]";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(fieldClass, className)} {...props} />;

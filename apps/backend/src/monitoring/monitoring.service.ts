@@ -282,7 +282,7 @@ export class MonitoringService {
         tenantId: auth.tenantId,
         workspaceId,
         ...(projectId ? { projectId } : {}),
-        productionArtifactId: { not: null },
+        OR: [{ productionArtifactId: { not: null } }, { videoId: { not: null } }],
       },
       orderBy: { updatedAt: 'desc' },
       include: {

@@ -1,14 +1,26 @@
 import { formatVideoTime } from "./video.form";
 import type { VideoRecord } from "./video.types";
 import { PUBLICATION_TITLE_MAX, PUBLICATION_URL_MAX, PUBLICATION_WORK_ID_MAX, type PublicationCompleteForm, type PublicationRecord } from "./publication.types";
-import { SHORT_LINK_HUMAN_ERROR, isDouyinShortLink } from "./ux/publication-monitoring-v5";
 
 export function isEligiblePublishVideo(video: VideoRecord): boolean {
-  return video.status === "COMPLETED" && Boolean(video.outputAsset?.contentPath || video.outputAsset?.id);
+  return (
+    video.status === "COMPLETED" &&
+    Boolean(video.outputAsset?.contentPath || video.outputAsset?.id) &&
+    video.finalAcceptance?.current === true &&
+    (video.finalAcceptance.variant === "VERTICAL" || !video.finalAcceptance.variant)
+  );
 }
 
 export function eligiblePublishVideos(items: VideoRecord[]): VideoRecord[] {
   return items.filter(isEligiblePublishVideo);
+}
+
+export function pendingManualPublishVideos(
+  items: VideoRecord[],
+  publications: { videoId?: string }[],
+): VideoRecord[] {
+  const tied = new Set(publications.map((item) => item.videoId).filter((id): id is string => Boolean(id)));
+  return eligiblePublishVideos(items).filter((video) => !tied.has(video.id));
 }
 
 export function resolvePublishVideoQuery(
@@ -16,6 +28,9 @@ export function resolvePublishVideoQuery(
   videos: VideoRecord[],
 ): { videoId: string; warning: string | null } {
   if (!videoId) {
+    if (videos.length === 1) {
+      return { videoId: videos[0]!.id, warning: null };
+    }
     return { videoId: "", warning: null };
   }
   const found = videos.find((item) => item.id === videoId);
@@ -64,9 +79,6 @@ export function validateExternalUrl(value: string): string | null {
     if (parsed.username || parsed.password) {
       return "请填写有效的作品链接。";
     }
-    if (isDouyinShortLink(trimmed)) {
-      return SHORT_LINK_HUMAN_ERROR;
-    }
     return null;
   } catch {
     return "请填写有效的作品链接。";
@@ -79,10 +91,53 @@ export function canSubmitComplete(form: PublicationCompleteForm): boolean {
   if (!url && !workId) {
     return false;
   }
-  if (url && isDouyinShortLink(url)) {
-    return Boolean(workId);
+  if (url && validateExternalUrl(form.externalUrl)) {
+    return false;
   }
-  return !validateExternalUrl(form.externalUrl);
+  return true;
+}
+
+export function isPublicationSourceBound(record: { videoId?: string | null; productionArtifactId?: string | null }): boolean {
+  return Boolean(record.videoId);
+}
+
+export function isRegistrationFormVisible(declaredPublished: boolean, hasSelectedVideo: boolean): boolean {
+  return declaredPublished === true && hasSelectedVideo === true;
+}
+
+export function publicationCreatedOnDeclarePublished(): boolean {
+  return false;
+}
+
+export function findDuplicatePublication(
+  items: PublicationRecord[],
+  videoId: string,
+  form: PublicationCompleteForm,
+): PublicationRecord | null {
+  const url = form.externalUrl.trim();
+  const workId = form.externalPostId.trim();
+  return (
+    items.find((item) => {
+      if (item.videoId !== videoId) {
+        return false;
+      }
+      if (url && item.externalUrl === url) {
+        return true;
+      }
+      if (workId && item.externalPostId === workId) {
+        return true;
+      }
+      return false;
+    }) ?? null
+  );
+}
+
+export function linkFormatCopy(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed || validateExternalUrl(trimmed)) {
+    return null;
+  }
+  return "链接格式已识别";
 }
 
 export function canManualComplete(record: PublicationRecord | null): boolean {
@@ -134,14 +189,20 @@ export function humanizePublicationError(error: unknown, action: "create" | "com
   if (code === "VIDEO_CONFLICT" || code === "VIDEO_NOT_FOUND") {
     return "所选视频已不可发布，请重新选择。";
   }
-  if (code === "MANUAL_PUBLICATION_EXTERNAL_IDENTITY_REQUIRED" || code === "VALIDATION_ERROR") {
-    return "无法标记为已发布，请检查填写内容后重试。";
+  if (code === "MANUAL_PUBLICATION_ALREADY_COMPLETED") {
+    return "这条作品已经登记过。";
   }
-  if (code === "MANUAL_PUBLICATION_INVALID_STATE" || code === "MANUAL_PUBLICATION_ALREADY_COMPLETED") {
-    return "无法标记为已发布，请检查填写内容后重试。";
+  if (code === "MANUAL_PUBLICATION_EXTERNAL_IDENTITY_REQUIRED" || code === "VALIDATION_ERROR") {
+    return "无法登记作品，请检查填写内容后重试。";
+  }
+  if (code === "SHORT_LINK_RESOLUTION_REQUIRED") {
+    return "这个短链接暂时无法自动识别，请填写作品 ID 或使用完整作品链接。";
+  }
+  if (code === "MANUAL_PUBLICATION_INVALID_STATE") {
+    return "无法登记作品，请检查填写内容后重试。";
   }
   if (action === "complete") {
-    return "无法标记为已发布，请检查填写内容后重试。";
+    return "无法登记作品，请检查填写内容后重试。";
   }
   return "发布记录创建失败，请稍后重试。";
 }

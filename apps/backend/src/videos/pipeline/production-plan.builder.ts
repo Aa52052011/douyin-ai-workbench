@@ -175,10 +175,11 @@ function pushScene(
     sequence,
     sourceKind: input.sourceKind,
     narration,
-    visualSuggestion: input.visualSuggestion,
+    visualSuggestion: evidenceForScene(input.sourceKind, narration, input.visualSuggestion, input.visualStyle),
     visualStyle: input.visualStyle,
     aspectRatio: input.aspectRatio,
   });
+  const suggestion = evidenceForScene(input.sourceKind, narration, input.visualSuggestion, input.visualStyle);
   scenes.push({
     sceneId,
     sourceSectionSequence: input.sourceSectionSequence,
@@ -186,13 +187,27 @@ function pushScene(
     sequence,
     narration,
     subtitle: input.subtitle.trim() || narration,
-    visualSuggestion: input.visualSuggestion,
+    visualSuggestion: suggestion,
+    visualIntent: narration,
+    requiredEvidence: suggestion,
     visualPrompt: visual.prompt,
     visualNegativePrompt: visual.negativePrompt || DEFAULT_VISUAL_NEGATIVE_PROMPT,
     visualSourceType: 'COLOR_BACKGROUND',
     durationBudget: input.durationBudget,
     transition: 'cut',
   });
+}
+
+function evidenceForScene(
+  sourceKind: SceneSourceKind,
+  narration: string,
+  visualSuggestion: string,
+  visualStyle: string,
+): string {
+  const specific = visualSuggestion.trim();
+  const style = visualStyle.trim();
+  const evidence = specific && specific !== style ? specific : narration;
+  return `${evidence}。产品工作台证据：中文后台字段/列表/生成结果，镜头=${sourceKind}。`;
 }
 
 function fingerprintPlan(plan: VideoProductionPlan): string {

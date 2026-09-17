@@ -18,6 +18,7 @@ export function emptyPlanningForm(platform = "douyin"): PlanningFormState {
     postsPerDay: 1,
     additionalRequirements: "",
     platform,
+    ignoreAcceptedPerformanceFeedback: false,
   };
 }
 
@@ -64,6 +65,7 @@ export function createPlanBody(projectId: string, form: PlanningFormState) {
     positioningRunId: string;
     strategyId?: string;
     additionalRequirements?: string;
+    ignoreAcceptedPerformanceFeedback?: boolean;
   } = {
     projectId,
     planningDays: PLANNING_DAYS_V1,
@@ -78,6 +80,9 @@ export function createPlanBody(projectId: string, form: PlanningFormState) {
   if (extra) {
     body.additionalRequirements = extra.slice(0, ADDITIONAL_REQUIREMENTS_MAX);
   }
+  if (form.ignoreAcceptedPerformanceFeedback) {
+    body.ignoreAcceptedPerformanceFeedback = true;
+  }
   return body;
 }
 
@@ -87,6 +92,26 @@ export function sortPlansNewestFirst(items: ContentPlanRecord[]): ContentPlanRec
 
 export function latestPlan(items: ContentPlanRecord[]): ContentPlanRecord | null {
   return sortPlansNewestFirst(items)[0] ?? null;
+}
+
+/** UI selection: a newer DRAFT is the main task; confirmed remains production SoT. */
+export function selectDisplayPlan(plans: ContentPlanRecord[]): {
+  display: ContentPlanRecord | null;
+  draftPriority: boolean;
+  confirmed: ContentPlanRecord | null;
+  draft: ContentPlanRecord | null;
+} {
+  const confirmed = sortPlansNewestFirst(plans).find((item) => item.status === "CONFIRMED" || item.status === "ARCHIVED") ?? null;
+  const draft = sortPlansNewestFirst(plans).find((item) => item.status === "DRAFT") ?? null;
+  if (draft && draft.status === "DRAFT") {
+    return {
+      display: draft,
+      draftPriority: Boolean(confirmed && confirmed.id !== draft.id),
+      confirmed,
+      draft,
+    };
+  }
+  return { display: confirmed ?? latestPlan(plans), draftPriority: false, confirmed, draft };
 }
 
 export function canConfirmPlan(status?: string): boolean {

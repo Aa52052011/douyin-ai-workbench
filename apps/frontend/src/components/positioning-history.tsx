@@ -21,7 +21,7 @@ export function PositioningHistory({ items }: { items: PositioningRecord[] }) {
           {items.map((item) => (
             <li
               key={item.runId}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--acf-border)] bg-[var(--acf-surface)] px-3 py-2"
             >
               <div className="min-w-0 text-sm">
                 <p className="text-neutral-500">{formatTime(item.createdAt)}</p>
@@ -36,7 +36,7 @@ export function PositioningHistory({ items }: { items: PositioningRecord[] }) {
       </details>
       {viewing ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[var(--acf-radius-md)] bg-[var(--acf-surface-elevated)] p-5 shadow-lg">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-medium">历史定位</h2>

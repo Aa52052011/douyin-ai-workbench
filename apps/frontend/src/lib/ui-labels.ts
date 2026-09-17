@@ -14,52 +14,83 @@ export const TERM = {
 } as const;
 
 const STATUS: Record<string, string> = {
-  PENDING: "等待中",
-  RUNNING: "正在制作",
-  PROCESSING: "正在制作",
-  COMPLETED: "成片完成",
-  FAILED: "制作失败",
+  PENDING: "等待处理",
+  RUNNING: "正在处理",
+  PROCESSING: "正在处理",
+  GENERATING: "正在处理",
+  COMPLETED: "已完成",
+  FAILED: "处理失败",
   READY: "可使用",
-  DRAFT: "等待审核",
+  DRAFT: "草稿",
   CONFIRMED: "已确认",
   ARCHIVED: "已归档",
   PUBLISHED: "已发布",
   UNKNOWN_EXTERNAL_STATE: "发布状态待确认",
-  NOT_STARTED: "待写脚本",
-  WAITING_REVIEW: "等待审核",
+  NOT_STARTED: "未开始",
+  WAITING_REVIEW: "待确认",
   SCRIPT_READY: "脚本已确认",
-  VIDEO_READY: "成片完成",
+  VIDEO_READY: "成片已完成",
   QUALITY_CHECK: "系统正在检查并优化视频",
   BEST_AVAILABLE: "已生成最佳可用版本",
   BLOCKED: "需要处理",
   NOT_CONFIGURED: "尚未配置",
+  ACCEPTED: "已采纳",
+  APPROVED: "已采纳",
+  REJECTED: "不采纳",
+  DEFERRED: "稍后再看",
+  USER_ASSERTED: "用户已登记",
+  FORMAT_VALIDATED: "链接格式已检查",
+  PLATFORM_VERIFIED: "平台已验证",
 };
 
-export function uiStatusLabel(status: string | null | undefined): string {
-  if (!status) return "未知状态";
+export function getUserFacingStatus(status: string | null | undefined): string {
+  if (!status) return "状态未知";
   return STATUS[status] ?? "处理中";
 }
 
-export function uiStatusTone(status: string | null | undefined): "neutral" | "progress" | "success" | "danger" {
+export function getStatusTone(
+  status: string | null | undefined,
+): "neutral" | "progress" | "success" | "danger" | "warning" {
   switch (status) {
     case "FAILED":
     case "BLOCKED":
       return "danger";
+    case "REJECTED":
+      return "neutral";
     case "COMPLETED":
     case "CONFIRMED":
     case "PUBLISHED":
     case "READY":
     case "VIDEO_READY":
     case "SCRIPT_READY":
+    case "ACCEPTED":
+    case "APPROVED":
       return "success";
+    case "USER_ASSERTED":
+      return "progress";
+    case "DRAFT":
+    case "DEFERRED":
+    case "WAITING_REVIEW":
+      return "warning";
     case "RUNNING":
     case "PROCESSING":
+    case "GENERATING":
     case "PENDING":
     case "QUALITY_CHECK":
       return "progress";
     default:
       return "neutral";
   }
+}
+
+export function uiStatusLabel(status: string | null | undefined): string {
+  return getUserFacingStatus(status);
+}
+
+export function uiStatusTone(status: string | null | undefined): "neutral" | "progress" | "success" | "danger" {
+  const tone = getStatusTone(status);
+  if (tone === "warning") return "neutral";
+  return tone;
 }
 
 export function productionModeLabel(mode: string | null | undefined): string {

@@ -67,6 +67,22 @@ export type ProjectStatusFacts = {
   pendingPublicationVideoId?: string | null;
   publishedPublicationId?: string | null;
   hasMetrics: boolean | null;
+  latestPlanId?: string | null;
+  latestPlanTopicCount?: number | null;
+  scriptsOnLatestPlan?: number | null;
+  completedScriptsOnLatestPlan?: number | null;
+  draftScriptsOnLatestPlan?: number | null;
+  hasVideoAwaitingAcceptance?: boolean | null;
+  awaitingAcceptanceCount?: number | null;
+  acceptedVideoCount?: number | null;
+  publishedCount?: number | null;
+  /** Accepted videos whose script belongs to the latest ContentPlan. */
+  acceptedVideosOnLatestPlan?: number | null;
+  /** PUBLISHED records tied to those current-cycle videos. */
+  publishedOnLatestPlan?: number | null;
+  /** Metrics/analysis present on a current-cycle publication. */
+  hasMetricsOnLatestPlan?: boolean | null;
+  recentTopics?: Array<{ topicId: string; title: string; statusLabel: string; href: string }>;
   summary: ProjectOverviewSummary;
   /**
    * Client-only Intake draft presence. Never used by evaluateProjectStages.

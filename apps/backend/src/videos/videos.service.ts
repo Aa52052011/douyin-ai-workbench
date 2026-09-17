@@ -18,6 +18,7 @@ import type { ProductionPreferences } from './director/production-director.types
 import { ensureTimelineSnapshot, toTimelinePublicView } from './timeline-public.js';
 import { asPipelineOutput } from './pipeline/stage-context.js';
 import { toQualityPublicView } from './quality/quality-public.js';
+import { toPublicFinalAcceptance, isIdempotentCurrentAccept } from './video-final-acceptance.js';
 import { isScriptEligibleForProduction } from '../scripts/human-approval.js';
 import { isScriptDomainMismatch } from './pipeline/script-domain-gate.js';
 import { UsageMeteringService } from '../usage/usage-metering.service.js';
@@ -61,6 +62,91 @@ export class VideosService {
     return this.toPublic(auth.tenantId, video);
   }
 
+  async acceptFinal(auth: AuthContext, id: string, workspaceHint?: string): Promise<VideoPublic> {
+    const video = await this.requireVideo(auth, id, workspaceHint);
+    if (video.status !== VideoStatus.COMPLETED || !video.outputAssetId) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    const assetId = video.outputAssetId;
+    const asset = await this.prisma.asset.findFirst({
+      where: { id: assetId, tenantId: auth.tenantId, workspaceId: video.workspaceId, deletedAt: null },
+    });
+    if (!asset || asset.type !== AssetType.VIDEO || asset.status !== AssetStatus.READY) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    const outputLink = await this.prisma.assetLink.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        videoId: video.id,
+        assetId: asset.id,
+        role: AssetLinkRole.VIDEO_OUTPUT,
+      },
+    });
+    if (!outputLink) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    let exists = false;
+    try {
+      exists = await this.storage.exists(asset.storageKey);
+    } catch {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    if (!exists) {
+      throw new AppError(ErrorCode.VIDEO_FINAL_ACCEPTANCE_NOT_AVAILABLE);
+    }
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.videoFinalAcceptance.findFirst({
+        where: { tenantId: auth.tenantId, videoId: video.id },
+      });
+      if (isIdempotentCurrentAccept(existing, asset.id)) {
+        return;
+      }
+      await tx.videoFinalAcceptance.updateMany({
+        where: {
+          tenantId: auth.tenantId,
+          projectId: video.projectId,
+          scriptId: video.scriptId,
+          current: true,
+          videoId: { not: video.id },
+        },
+        data: { current: false, supersededAt: now },
+      });
+      if (existing) {
+        await tx.videoFinalAcceptance.update({
+          where: { id_tenantId: { id: existing.id, tenantId: auth.tenantId } },
+          data: {
+            acceptedArtifactId: asset.id,
+            variant: 'VERTICAL',
+            status: 'ACCEPTED',
+            current: true,
+            acceptedAt: now,
+            acceptedByUserId: auth.userId,
+            supersededAt: null,
+            scriptId: video.scriptId,
+          },
+        });
+        return;
+      }
+      await tx.videoFinalAcceptance.create({
+        data: {
+          tenantId: auth.tenantId,
+          workspaceId: video.workspaceId,
+          projectId: video.projectId,
+          scriptId: video.scriptId,
+          videoId: video.id,
+          acceptedArtifactId: asset.id,
+          variant: 'VERTICAL',
+          status: 'ACCEPTED',
+          current: true,
+          acceptedAt: now,
+          acceptedByUserId: auth.userId,
+        },
+      });
+    });
+    return this.toPublic(auth.tenantId, video);
+  }
+
   async getUsageSummary(auth: AuthContext, id: string, workspaceHint?: string) {
     await this.requireVideo(auth, id, workspaceHint);
     if (!this.metering) {
@@ -89,25 +175,43 @@ export class VideosService {
     auth: AuthContext,
     id: string,
     workspaceHint?: string,
+    variant?: string,
   ): Promise<{ body: Buffer; mimeType: string; filename: string; contentDisposition: string }> {
     const video = await this.requireVideo(auth, id, workspaceHint);
     if (video.status !== VideoStatus.COMPLETED || !video.outputAssetId) {
       throw new AppError(ErrorCode.VIDEO_EXPORT_NOT_AVAILABLE);
     }
+    const landscapeWanted = variant === 'landscape';
+    const landscapeLink = landscapeWanted
+      ? await this.prisma.assetLink.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            videoId: video.id,
+            role: AssetLinkRole.VIDEO_PREVIEW,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : null;
+    const assetId = landscapeWanted ? landscapeLink?.assetId : video.outputAssetId;
+    if (!assetId) {
+      throw new AppError(ErrorCode.VIDEO_EXPORT_NOT_AVAILABLE);
+    }
     const asset = await this.prisma.asset.findFirst({
-      where: { id: video.outputAssetId, tenantId: auth.tenantId, workspaceId: video.workspaceId, deletedAt: null },
+      where: { id: assetId, tenantId: auth.tenantId, workspaceId: video.workspaceId, deletedAt: null },
     });
     if (!asset || asset.type !== AssetType.VIDEO || asset.status !== AssetStatus.READY) {
       throw new AppError(ErrorCode.VIDEO_EXPORT_NOT_AVAILABLE);
     }
-    const outputLink = await this.prisma.assetLink.findFirst({
-      where: {
-        tenantId: auth.tenantId,
-        videoId: video.id,
-        assetId: asset.id,
-        role: AssetLinkRole.VIDEO_OUTPUT,
-      },
-    });
+    const outputLink = landscapeWanted
+      ? landscapeLink
+      : await this.prisma.assetLink.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            videoId: video.id,
+            assetId: asset.id,
+            role: AssetLinkRole.VIDEO_OUTPUT,
+          },
+        });
     if (!outputLink) {
       throw new AppError(ErrorCode.VIDEO_EXPORT_NOT_AVAILABLE);
     }
@@ -121,7 +225,13 @@ export class VideosService {
       throw new AppError(ErrorCode.VIDEO_EXPORT_NOT_AVAILABLE);
     }
     const body = await this.storage.get(asset.storageKey);
-    const filename = videoExportFilename(video.id);
+    const script = video.scriptId
+      ? await this.prisma.script.findFirst({
+          where: { id: video.scriptId, tenantId: auth.tenantId, deletedAt: null },
+          select: { title: true },
+        })
+      : null;
+    const filename = videoExportFilename(script?.title, landscapeWanted ? 'landscape' : 'vertical');
     return {
       body,
       mimeType: asset.mimeType || 'video/mp4',
@@ -459,7 +569,7 @@ export class VideosService {
     filePath?: string | null;
     deletedAt?: Date | null;
   }): Promise<VideoPublic> {
-    const [script, generationJob, outputAsset] = await Promise.all([
+    const [script, generationJob, outputAsset, landscapeLink, acceptance] = await Promise.all([
       video.scriptId
         ? this.prisma.script.findFirst({
             where: { id: video.scriptId, tenantId, deletedAt: null },
@@ -472,15 +582,29 @@ export class VideosService {
             where: { id: video.outputAssetId, tenantId, deletedAt: null },
           })
         : Promise.resolve(null),
+      this.prisma.assetLink.findFirst({
+        where: { tenantId, videoId: video.id, role: AssetLinkRole.VIDEO_PREVIEW },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.videoFinalAcceptance.findFirst({
+        where: { tenantId, videoId: video.id },
+      }),
     ]);
+    const landscapeAsset = landscapeLink?.assetId
+      ? await this.prisma.asset.findFirst({
+          where: { id: landscapeLink.assetId, tenantId, deletedAt: null },
+        })
+      : null;
     return toPublicVideo(video, {
       scriptTitle: script?.title ?? null,
       job: generationJob,
       outputAsset,
+      landscapeAsset,
       quality: toQualityPublicView(
         generationJob ? asPipelineOutput(generationJob.output).qualityGate : undefined,
         video.status === VideoStatus.COMPLETED,
       ),
+      finalAcceptance: toPublicFinalAcceptance(acceptance),
     });
   }
 

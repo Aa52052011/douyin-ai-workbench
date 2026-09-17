@@ -47,8 +47,10 @@ describe('repair planner', () => {
 describe('subtitle reflow', () => {
   it('splits overflow cues', () => {
     const next = reflowOverflowCues([{ start: 0, end: 4, text: '这是一句远远超过安全字数限制的中文字幕内容还要更长一些' }], 8);
-    expect(next.length).toBeGreaterThan(1);
-    expect(next.every((cue) => cue.text.length <= 20)).toBe(true);
+    expect(next).toHaveLength(1);
+    expect(next[0]?.text.includes('\n')).toBe(true);
+    expect(next[0]?.start).toBe(0);
+    expect(next[0]?.end).toBe(4);
   });
 });
 

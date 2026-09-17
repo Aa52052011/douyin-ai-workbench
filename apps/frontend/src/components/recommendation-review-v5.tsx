@@ -1,78 +1,74 @@
 "use client";
 
-import { Button } from "./ui/button";
-import {
-  CONFIDENCE_TOOLTIP,
-  POSITIONING_SINGLE_POST_DOWNGRADE,
-  applyFeedbackCopy,
-  causalityCopy,
-  confidenceCopy,
-  findingTypeCopy,
-  recommendationGroupLabel,
-} from "../lib/ux/publication-monitoring-v5";
+import { useState } from "react";
+import { RecommendationCardV2 } from "./recommendation-card-v2";
+import { remainingCount, visibleByPersistedOrder } from "../lib/ai-review.workspace";
 
 export type RecommendationReviewItem = {
   id: string;
   title: string;
   reason: string;
   evidence: string;
+  evidenceLines?: string[];
+  observation?: string;
+  interpretation?: string;
+  recommendedAction?: string;
+  uncertainty?: string;
   confidence?: string;
   causality?: string;
   type?: string;
   group?: string;
   hypothesis?: boolean;
+  reviewStatus?: string;
+  reviewHistory?: Array<{ decision?: string; reviewedAt?: string; reviewedBy?: string | null }>;
+  reviewedAt?: string | null;
+  insufficient?: boolean;
 };
 
 export function RecommendationReviewV5({
   items,
-  decisions,
+  decisions: _decisions,
   singlePost,
+  pendingId,
+  errorId,
+  errorMessage,
   onDecide,
 }: {
   items: RecommendationReviewItem[];
   decisions: Record<string, "approve" | "reject" | "defer">;
   singlePost: boolean;
+  pendingId?: string | null;
+  errorId?: string | null;
+  errorMessage?: string | null;
   onDecide: (id: string, action: "approve" | "reject" | "defer") => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
   if (items.length === 0) return null;
+  const visible = visibleByPersistedOrder(items, showAll, 3);
+  const extra = remainingCount(items.length, 3);
   return (
     <section className="space-y-4" data-acf-recommendation-review-v5>
-      <p className="text-sm">你正在审核：AI给出的优化建议</p>
-      {items.map((item) => (
-        <article key={item.id} className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-          <p className="text-xs text-neutral-500">{recommendationGroupLabel(item.group)}</p>
-          {item.hypothesis || item.type === "HYPOTHESIS" ? (
-            <p className="text-xs font-medium">待验证假设</p>
-          ) : (
-            <p className="text-xs text-neutral-500">{findingTypeCopy(item.type)}</p>
-          )}
-          <p className="font-medium">建议：{item.title}</p>
-          <p>原因：{item.reason}</p>
-          <p>依据：{item.evidence}</p>
-          {confidenceCopy(item.confidence) ? (
-            <p title={CONFIDENCE_TOOLTIP}>
-              置信度：{confidenceCopy(item.confidence)}
-              <span className="ml-1 text-neutral-500">（{CONFIDENCE_TOOLTIP}）</span>
-            </p>
-          ) : null}
-          {causalityCopy(item.causality) ? <p>{causalityCopy(item.causality)}</p> : null}
-          {singlePost && recommendationGroupLabel(item.group) === "账号定位" ? (
-            <p className="text-neutral-600">{POSITIONING_SINGLE_POST_DOWNGRADE}</p>
-          ) : null}
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button type="button" onClick={() => onDecide(item.id, "approve")}>
-              采纳
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => onDecide(item.id, "reject")}>
-              不采纳
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => onDecide(item.id, "defer")}>
-              稍后再看
-            </Button>
-          </div>
-          {decisions[item.id] === "approve" ? <p className="text-neutral-600">{applyFeedbackCopy()}</p> : null}
-        </article>
+      <p className="sr-only">采纳 不采纳 稍后再看 待验证假设 正在保存决策 保存决策失败，请重试</p>
+      {visible.map((item) => (
+        <RecommendationCardV2
+          key={item.id}
+          item={item}
+          singlePost={singlePost}
+          pending={pendingId === item.id}
+          errorMessage={errorId === item.id ? errorMessage : null}
+          onDecide={onDecide}
+        />
       ))}
+      {extra > 0 && !showAll ? (
+        <button className="text-sm underline" type="button" aria-expanded={false} onClick={() => setShowAll(true)}>
+          查看另外 {extra} 条建议
+        </button>
+      ) : null}
+      {showAll && extra > 0 ? (
+        <button className="text-sm underline" type="button" aria-expanded={true} onClick={() => setShowAll(false)}>
+          收起其余建议
+        </button>
+      ) : null}
     </section>
   );
 }

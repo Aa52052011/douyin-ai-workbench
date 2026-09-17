@@ -2,7 +2,7 @@ import type { VideoView } from "../lib/video.types";
 
 export function VideoProgress({ view }: { view: VideoView }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <h3 className="text-sm font-medium">当前进度</h3>
       <p className="mt-1 text-sm text-neutral-700" aria-live="polite">
         {view.currentStageLabel}

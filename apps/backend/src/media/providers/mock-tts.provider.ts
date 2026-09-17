@@ -39,6 +39,8 @@ export class MockTtsProvider implements TtsProvider {
       duration: rendered.duration,
       mimeType: 'audio/wav',
       size: stored.size,
+      speechCues: mockSpeechCues(request.text, rendered.duration),
+      timingSource: 'none' as const,
       usage: {
         inputCharacters: request.text.replace(/\s+/g, '').length,
         audioSeconds: rendered.duration,
@@ -50,6 +52,27 @@ export class MockTtsProvider implements TtsProvider {
       },
     };
   }
+}
+
+function mockSpeechCues(text: string, duration: number): Array<{ text: string; start: number; end: number }> {
+  const pieces = text
+    .split(/(?<=[。！？；…\n])/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (pieces.length === 0 || duration <= 0) {
+    return [];
+  }
+  const weights = pieces.map((item) => Math.max(1, item.replace(/\s+/g, '').length));
+  const sum = weights.reduce((total, item) => total + item, 0);
+  const cues: Array<{ text: string; start: number; end: number }> = [];
+  let cursor = 0;
+  for (const [index, piece] of pieces.entries()) {
+    const start = cursor;
+    const end = index === pieces.length - 1 ? duration : cursor + (duration * weights[index]) / sum;
+    cues.push({ text: piece, start, end });
+    cursor = end;
+  }
+  return cues;
 }
 
 async function renderLocalMockVoice(

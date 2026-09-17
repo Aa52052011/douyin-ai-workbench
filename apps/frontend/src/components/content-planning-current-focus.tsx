@@ -34,7 +34,7 @@ export function ContentPlanningCurrentFocus({
         : "查看脚本";
 
   return (
-    <section className="rounded-xl border border-neutral-900 bg-white p-4">
+    <section className="acf-stage-current rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
         {isCurrentProduction ? "现在先做这一条" : "选题详情"}
       </p>

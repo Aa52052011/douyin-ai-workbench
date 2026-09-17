@@ -2,30 +2,37 @@ export function VideoVariantPanelV4({
   portrait,
   onSelect,
   selected,
+  landscapeAvailable,
 }: {
   portrait: boolean;
   selected: "vertical" | "landscape";
   onSelect: (next: "vertical" | "landscape") => void;
+  landscapeAvailable: boolean;
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm" data-acf-video-variant>
-      <p className="font-medium">成片版本</p>
-      <p className="acf-caption mt-1">抖音推荐版本：竖版。这不是已经发布。</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <section className="text-sm" data-acf-video-variant role="tablist" aria-label="画面比例">
+      <p className="font-medium">画面比例</p>
+      <div className="mt-2 flex flex-wrap gap-2">
         <button
           type="button"
-          className={`rounded-md border px-3 py-1.5 ${selected === "vertical" ? "border-neutral-900 bg-neutral-900 text-white" : ""}`}
+          role="tab"
+          aria-selected={selected === "vertical"}
+          className={`rounded-[var(--acf-radius-sm)] border px-3 py-1.5 ${selected === "vertical" ? "border-[var(--acf-text)] bg-[var(--acf-surface-muted)]" : ""}`}
           onClick={() => onSelect("vertical")}
         >
-          竖版视频{portrait ? " · 当前" : ""}
+          竖版 9:16{portrait && selected === "vertical" ? " · 当前" : ""}
         </button>
-        <button
-          type="button"
-          className={`rounded-md border px-3 py-1.5 ${selected === "landscape" ? "border-neutral-900 bg-neutral-900 text-white" : ""}`}
-          onClick={() => onSelect("landscape")}
-        >
-          横版视频
-        </button>
+        {landscapeAvailable ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selected === "landscape"}
+            className={`rounded-[var(--acf-radius-sm)] border px-3 py-1.5 ${selected === "landscape" ? "border-[var(--acf-text)] bg-[var(--acf-surface-muted)]" : ""}`}
+            onClick={() => onSelect("landscape")}
+          >
+            横版 16:9
+          </button>
+        ) : null}
       </div>
     </section>
   );

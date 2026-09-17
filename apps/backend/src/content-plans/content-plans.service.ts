@@ -56,6 +56,7 @@ export class ContentPlansService {
       positioning?: Record<string, unknown>;
       positioningRunId?: string;
       strategyId?: string;
+      ignoreAcceptedPerformanceFeedback?: boolean;
     },
     meta: { requestId: string; locale?: string; workspaceHint?: string },
   ): Promise<ContentPlanPublic> {
@@ -80,6 +81,7 @@ export class ContentPlansService {
           contentStyle: input.contentStyle,
           additionalRequirements: input.additionalRequirements,
           strategyId: input.strategyId,
+          ...(input.ignoreAcceptedPerformanceFeedback ? { ignoreAcceptedPerformanceFeedback: true } : {}),
         },
       },
       meta,

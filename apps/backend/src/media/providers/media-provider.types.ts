@@ -18,12 +18,20 @@ export type TtsSynthesizeRequest = {
   clientRequestId?: string;
 };
 
+export type SpeechTimingCue = {
+  text: string;
+  start: number;
+  end: number;
+};
+
 export type TtsSynthesizeResult = {
   storageKey: string;
   duration: number;
   mimeType: string;
   size: number;
   usage?: TtsUsage;
+  speechCues?: SpeechTimingCue[];
+  timingSource?: 'provider_sentence' | 'provider_word' | 'none';
 };
 
 export interface TtsProvider {

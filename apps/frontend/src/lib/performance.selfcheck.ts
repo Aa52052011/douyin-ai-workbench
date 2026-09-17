@@ -11,6 +11,7 @@ import {
   percentInputToRate,
   pretendsFullFeedback,
   resolvePerformanceQuery,
+  hoursSince,
   sortSnapshotsNewestFirst,
 } from "./performance.form";
 import type { MetricSnapshotRecord } from "./performance.types";
@@ -18,10 +19,12 @@ import { PERFORMANCE_RAW_TERMS } from "./performance.types";
 import {
   feedbackLoopCopy,
   hasCausalLanguage,
+  displayMetricValue,
   humanizePerformanceInsight,
   insightObservationText,
   insufficientDataCopy,
   limitedSampleCopy,
+  latestMetricCards,
   metricFieldLabel,
   metricHistoryRows,
   metricSourceLabel,
@@ -29,9 +32,17 @@ import {
   noPublishedEmptyTitle,
   optimizationPretendsFullFeedback,
   optimizationScopeNote,
+  performanceReviewItems,
   viewModelHasRawContract,
 } from "./performance.view";
 import type { PublicationRecord } from "./publication.types";
+import { evidenceForInsight, INSUFFICIENT_EVIDENCE_COPY } from "./ux/publication-monitoring-v5";
+import {
+  isActionableRecommendationText,
+  persistedDecisionLabel,
+  REVIEW_SAVE_FAILED,
+  reviewItemsFromAnalysis,
+} from "./performance-review.view";
 
 function publication(partial: Partial<PublicationRecord> & Pick<PublicationRecord, "id" | "status">): PublicationRecord {
   return {
@@ -115,15 +126,148 @@ function run() {
   assert.equal(metricSourceLabel("IMPORT"), "文件导入");
   assert.equal(metricSourceLabel("DOUYIN_API"), "");
 
-  // 8 metric history sort
+  // 8 metric history sort + zero/null/undefined/negative rendering
+  assert.equal(displayMetricValue(0), "0");
+  assert.equal(displayMetricValue(null), "—");
+  assert.equal(displayMetricValue(undefined), "—");
+  assert.equal(displayMetricValue(-2), "-2");
+  assert.equal(displayMetricValue(96), "96");
   const history = metricHistoryRows(
     [
-      snapshot({ observedAt: "2026-03-02T12:00:00.000Z", views: 80 }),
-      snapshot({ observedAt: "2026-03-03T12:00:00.000Z", views: 200 }),
+      snapshot({ observedAt: "2026-03-02T12:00:00.000Z", views: 80, comments: 0, newFollowers: null }),
+      snapshot({
+        observedAt: "2026-03-03T12:00:00.000Z",
+        views: 96,
+        likes: 31,
+        comments: 10,
+        shares: 3,
+        favorites: 3,
+        newFollowers: 0,
+      }),
     ],
     "2026-03-02T00:00:00.000Z",
   );
-  assert.equal(history[0]?.views, "200");
+  assert.equal(history[0]?.views, "96");
+  assert.equal(history[0]?.likes, "31");
+  assert.equal(history[0]?.comments, "10");
+  assert.equal(history[0]?.shares, "3");
+  assert.equal(history[0]?.favorites, "3");
+  assert.equal(history[0]?.changeLabel, "0");
+  assert.equal(history[1]?.changeLabel, "—");
+  const zeroCards = latestMetricCards({
+    observedAt: "2026-09-15T14:11:00.000Z",
+    views: 96,
+    likes: 31,
+    comments: 10,
+    shares: 3,
+    favorites: 3,
+    newFollowers: 0,
+  });
+  assert.equal(zeroCards.find((item) => item.label === "新增粉丝")?.value, "0");
+  assert.equal(
+    metricHistoryRows([snapshot({ observedAt: "2026-03-04T12:00:00.000Z", newFollowers: -2 })])[0]?.changeLabel,
+    "-2",
+  );
+  const realWindow = metricHistoryRows(
+    [
+      snapshot({
+        observedAt: "2026-09-15T14:11:00.000Z",
+        views: 96,
+        likes: 31,
+        comments: 10,
+        shares: 3,
+        favorites: 3,
+        newFollowers: 0,
+      }),
+      snapshot({
+        observedAt: "2026-09-15T14:20:00.000Z",
+        views: 115,
+        likes: 42,
+        comments: 12,
+        shares: 5,
+        favorites: 6,
+        newFollowers: 1,
+      }),
+    ],
+    "2026-09-15T13:20:00.000Z",
+  );
+  assert.equal(realWindow[0]?.hoursLabel, "9 分钟");
+  assert.equal(realWindow[1]?.hoursLabel, "");
+  assert.equal(hoursSince("2026-09-15T14:11:00.000Z", "2026-09-15T15:10:00.000Z"), "59 分钟");
+  assert.equal(hoursSince("2026-09-15T14:11:00.000Z", "2026-09-15T15:11:00.000Z"), "1 小时");
+  assert.equal(hoursSince("2026-09-15T14:11:00.000Z", "2026-09-15T15:12:00.000Z"), "1 小时 1 分钟");
+  const snap1 = snapshot({
+    observedAt: "2026-09-15T14:11:00.000Z",
+    views: 96,
+    likes: 31,
+    comments: 10,
+    shares: 3,
+    favorites: 3,
+    newFollowers: 0,
+  });
+  const snap2 = snapshot({
+    observedAt: "2026-09-15T14:20:00.000Z",
+    views: 115,
+    likes: 42,
+    comments: 12,
+    shares: 5,
+    favorites: 6,
+    newFollowers: 1,
+  });
+  assert.equal(evidenceForInsight("HIGH_VIEWS", snap1, snap2), "播放量从 96 到 115（+19 / +19.8%）");
+  assert.equal(evidenceForInsight("HIGH_LIKE_RATE", snap1, snap2), "点赞从 31 到 42（+11 / +35.5%）");
+  assert.equal(evidenceForInsight("HIGH_COMMENT_RATE", snap1, snap2), "评论从 10 到 12（+2 / +20%）");
+  assert.equal(evidenceForInsight("HIGH_SHARE_RATE", snap1, snap2), "分享从 3 到 5（+2 / +66.7%）");
+  assert.equal(evidenceForInsight("HIGH_FAVORITE_RATE", snap1, snap2), "收藏从 3 到 6（+3 / +100%）");
+  assert.equal(evidenceForInsight("FOLLOWER_CHANGE", snap1, snap2), "新增粉丝从 0 到 1（+1）");
+  assert.equal(evidenceForInsight("HIGH_COMMENT_RATE", snap1, snap2).includes("96"), false);
+  assert.equal(evidenceForInsight("HIGH_COMMENT_RATE", snap1, snap2).includes("播放"), false);
+  assert.equal(evidenceForInsight("HIGH_ENGAGEMENT_RATE", snap1, snap2).includes("播放量"), false);
+  assert.equal(evidenceForInsight("HIGH_LIKE_RATE", { likes: null }, { likes: null }), INSUFFICIENT_EVIDENCE_COPY);
+  assert.equal(evidenceForInsight("HIGH_LIKE_RATE", { likes: 5 }, { likes: 3 }), "点赞从 5 到 3（-2 / -40%）");
+  const review = performanceReviewItems(
+    {
+      insights: [
+        { code: "HIGH_COMMENT_RATE", confidence: "HIGH" },
+        { code: "HIGH_LIKE_RATE", confidence: "HIGH" },
+        { code: "HIGH_SHARE_RATE", confidence: "HIGH" },
+        { code: "HIGH_FAVORITE_RATE", confidence: "HIGH" },
+        { code: "HIGH_ENGAGEMENT_RATE", confidence: "HIGH" },
+      ],
+    },
+    [snap1, snap2],
+  );
+  assert.equal(review.find((item) => item.id === "HIGH_COMMENT_RATE")?.evidence, "评论从 10 到 12（+2 / +20%）");
+  assert.equal(new Set(review.map((item) => item.evidence)).size > 1, true);
+  assert.equal(
+    review.every((item) => item.id === "HIGH_ENGAGEMENT_RATE" || !item.evidence.includes("播放量从 96")),
+    true,
+  );
+  const persisted = reviewItemsFromAnalysis({
+    id: "analysis-1",
+    publishedPostId: "01a0a54e-5f54-78c1-a558-76a8d5fcf686",
+    recommendations: [
+      {
+        recommendationId: "rec-comments-cta",
+        observation: "评论从 10 到 12（+2 / +20%）",
+        evidence: ["评论从 10 到 12（+2 / +20%）"],
+        interpretation: "当前样本显示评论互动在这一观察窗口内继续增加。",
+        recommendedAction: "下一条内容可继续保留明确提问式 CTA，并测试一个更具体的评论问题。",
+        confidence: "MEDIUM",
+        uncertainty: "当前只有两次人工采样，不能确认变化是由某个具体镜头造成。",
+        category: "CTA",
+        reviewStatus: "ACCEPTED",
+      },
+    ],
+  });
+  assert.equal(persisted[0]?.observation?.includes("10"), true);
+  assert.equal(isActionableRecommendationText(persisted[0]?.recommendedAction), true);
+  assert.equal(isActionableRecommendationText("评论互动较活跃"), false);
+  assert.equal(REVIEW_SAVE_FAILED, "保存决策失败，请重试");
+  assert.equal(persistedDecisionLabel("PENDING"), "未审核");
+  assert.equal(persistedDecisionLabel("ACCEPTED"), "已采纳");
+  assert.equal(persistedDecisionLabel("REJECTED"), "已不采纳");
+  assert.equal(persistedDecisionLabel("DEFERRED"), "稍后再看");
   assert.equal(sortSnapshotsNewestFirst([
     snapshot({ observedAt: "2026-03-02T12:00:00.000Z" }),
     snapshot({ observedAt: "2026-03-03T12:00:00.000Z" }),

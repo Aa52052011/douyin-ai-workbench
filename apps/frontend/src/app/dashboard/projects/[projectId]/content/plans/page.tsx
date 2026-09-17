@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { ConfidenceActionCard } from "../../../../../../components/confidence-action-card";
-import { ContentPlanningCurrentFocus } from "../../../../../../components/content-planning-current-focus";
 import { ContentPlanningForm } from "../../../../../../components/content-planning-form";
 import { ContentPlanningHistory } from "../../../../../../components/content-planning-history";
 import { ContentPlanningTopics } from "../../../../../../components/content-planning-topics";
-import { ContentPlanningWeekOverview } from "../../../../../../components/content-planning-week-overview";
 import { EmptyState } from "../../../../../../components/empty-state";
-import { ExplanationDetails } from "../../../../../../components/explanation-details";
-import { PageHeader } from "../../../../../../components/page-header";
-import { ProductionContextHeaderV3, WorkflowFooterV3 } from "../../../../../../components/production-context-header";
-import { AITaskState } from "../../../../../../components/ui/ai-task-state";
-import { ProductErrorState } from "../../../../../../components/ui/error-state";
+import { WorkflowPageHeaderV1 } from "../../../../../../components/workflow-page-header-v1";
+import { LearningContextSummaryV1 } from "../../../../../../components/learning-context-summary-v1";
+import { PlanningAcceptedFeedbackNotice } from "../../../../../../components/planning-accepted-feedback-notice";
+import { ProductionContextHeaderV3 } from "../../../../../../components/production-context-header";
+import { AsyncTaskProgressV1 } from "../../../../../../components/async-task-progress-v1";
+import { InlineActionErrorV1 } from "../../../../../../components/inline-action-error-v1";
+import { NextActionBarV1 } from "../../../../../../components/next-action-bar-v1";
+import { Button } from "../../../../../../components/ui/button";
+import { Skeleton } from "../../../../../../components/ui/feedback";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { listCampaignStrategies } from "../../../../../../lib/campaign-strategy.api";
 import type { CampaignStrategyRecord } from "../../../../../../lib/campaign-strategy.types";
@@ -27,7 +28,6 @@ import {
   strategyConfidenceLabel,
   strategyStatusLabel,
 } from "../../../../../../lib/campaign-strategy.view";
-import { buildConfidenceActionView } from "../../../../../../lib/confidence-action";
 import {
   archiveContentPlan,
   confirmContentPlan,
@@ -44,24 +44,24 @@ import {
   latestPlan,
   positioningHref,
   resolveStrategyQuery,
+  selectDisplayPlan,
   usableStrategies,
 } from "../../../../../../lib/content-planning.form";
 import {
   buildTopicProductionItems,
   findNextProductionAction,
-  getCurrentProductionTopic,
-  isSevenDaySingleTrack,
-  latestConfirmedPlan,
-  latestDraftPlan,
   nextActionHref,
   summarizeProductionProgress,
 } from "../../../../../../lib/content-planning.production";
 import type { ContentPlanRecord, PlanningFormState } from "../../../../../../lib/content-planning.types";
-import { formatPlanTime, parsedPlanView, planHistoryViews, planStatusLabel } from "../../../../../../lib/content-planning.view";
+import { parsedPlanView, planHistoryViews, planStatusLabel } from "../../../../../../lib/content-planning.view";
 import { listPositioningRuns } from "../../../../../../lib/positioning.api";
 import { completedPositioningRecords } from "../../../../../../lib/positioning.form";
 import type { PositioningRecord } from "../../../../../../lib/positioning.types";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
+import { adjacentProjectNav } from "../../../../../../lib/project-nav";
+import { listAcceptedPerformanceFeedback } from "../../../../../../lib/performance-analysis.api";
+import type { AcceptedPerformanceFeedbackItem } from "../../../../../../lib/performance-analysis.api";
 import { listPublications } from "../../../../../../lib/publication.api";
 import type { PublicationRecord } from "../../../../../../lib/publication.types";
 import { listScripts } from "../../../../../../lib/script.api";
@@ -92,7 +92,9 @@ function ContentPlansPageInner() {
   const [archiveAsk, setArchiveAsk] = useState(false);
   const [regenerateAsk, setRegenerateAsk] = useState(false);
   const [strategyByPlanId, setStrategyByPlanId] = useState<Record<string, string>>({});
-  const [userSelectedTopicId, setUserSelectedTopicId] = useState<string | null>(null);
+  const [acceptedFeedback, setAcceptedFeedback] = useState<AcceptedPerformanceFeedbackItem[]>([]);
+  const [preferConfirmed, setPreferConfirmed] = useState(false);
+  const flow = adjacentProjectNav(`/dashboard/projects/${projectId}/content/plans`, projectId);
 
   useEffect(() => {
     if (!accessToken || !projectId) {
@@ -106,7 +108,8 @@ function ContentPlansPageInner() {
       listScripts(accessToken, projectId),
       listVideos(accessToken, projectId),
       listPublications(accessToken, projectId),
-    ]).then(([positioningResult, strategyResult, planResult, scriptResult, videoResult, publicationResult]) => {
+      listAcceptedPerformanceFeedback(accessToken, projectId),
+    ]).then(([positioningResult, strategyResult, planResult, scriptResult, videoResult, publicationResult, acceptedResult]) => {
       if (cancelled) {
         return;
       }
@@ -129,6 +132,11 @@ function ContentPlansPageInner() {
       setScripts(scriptResult.status === "fulfilled" ? scriptResult.value : []);
       setVideos(videoResult.status === "fulfilled" ? videoResult.value : []);
       setPublications(publicationResult.status === "fulfilled" ? publicationResult.value : []);
+      setAcceptedFeedback(
+        acceptedResult.status === "fulfilled" && Array.isArray(acceptedResult.value.items)
+          ? acceptedResult.value.items
+          : [],
+      );
       const resolved = resolveStrategyQuery(queryStrategyId, nextStrategies);
       setQueryWarning(resolved.warning);
       setForm({
@@ -146,13 +154,11 @@ function ContentPlansPageInner() {
   }, [accessToken, projectId, project.platform, queryStrategyId]);
 
   const latest = latestPlan(plans);
-  const productionPlan = latestConfirmedPlan(plans);
-  const draftPlan = latestDraftPlan(plans);
-  const pendingNewDraft =
-    Boolean(draftPlan && canConfirmPlan(draftPlan.status) && productionPlan && draftPlan.id !== productionPlan.id);
-
-  // Production SoT = latest confirmed. Solo draft (no confirmed yet) is shown for confirm preview.
-  const displayPlan = productionPlan ?? draftPlan ?? latest;
+  const selected = selectDisplayPlan(plans);
+  const productionPlan = selected.confirmed;
+  const draftPlan = selected.draft;
+  const pendingNewDraft = selected.draftPriority;
+  const displayPlan = preferConfirmed && selected.confirmed ? selected.confirmed : selected.display;
   const displayView = displayPlan ? parsedPlanView(displayPlan) : null;
 
   const productionItems = useMemo(() => {
@@ -166,14 +172,7 @@ function ContentPlansPageInner() {
   }, [displayPlan, scripts, videos, publications]);
 
   const progress = summarizeProductionProgress(productionItems);
-  const currentTopic = getCurrentProductionTopic(productionItems);
   const nextAction = findNextProductionAction(productionItems);
-  const focusTopic =
-    productionItems.find((item) => item.topicId === userSelectedTopicId) ??
-    currentTopic ??
-    productionItems[0] ??
-    null;
-  const isSevenDay = displayPlan ? isSevenDaySingleTrack(displayPlan, productionItems.length) : false;
 
   const usable = usableStrategies(strategies);
   const strategyOptions = [...usable]
@@ -196,15 +195,6 @@ function ContentPlansPageInner() {
   const selectedStrategy = strategies.find((item) => item.id === form.strategyId);
   const planStrategy = selectedStrategy;
   const planStrategyParsed = planStrategy ? parseStrategyOutput(planStrategy.payload) : null;
-  const planningConfidence =
-    projectId && planStrategyParsed
-      ? buildConfidenceActionView({
-          confidence: planStrategyParsed.confidence,
-          limitationCodes: planStrategyParsed.dataLimitations,
-          projectId,
-          context: "planning",
-        })
-      : null;
   const currentStrategyLabel = displayPlan ? strategyByPlanId[displayPlan.id] : undefined;
   const confirmedMode = Boolean(displayPlan && canGenerateScript(displayPlan.status));
   // Only the plan currently on screen awaiting confirm — not a sibling draft banner case.
@@ -248,6 +238,7 @@ function ContentPlansPageInner() {
     try {
       await confirmContentPlan(accessToken, target.id);
       setPlans(await listContentPlans(accessToken, projectId));
+      setPreferConfirmed(false);
     } catch (error) {
       setActionError(humanizePlanningError(error, "confirm"));
     } finally {
@@ -274,73 +265,97 @@ function ContentPlansPageInner() {
   }
 
   const confirmFocusHref =
-    confirmedMode && productionPlan && nextAction.kind !== "COMPLETE"
-      ? nextActionHref(projectId, productionPlan.id, nextAction)
+    confirmedMode && displayPlan && nextAction.kind !== "COMPLETE"
+      ? nextActionHref(projectId, displayPlan.id, nextAction)
       : null;
+
+  const currentPositioning = positioning.find((item) => item.runId === form.positioningRunId) ?? positioning[0];
+  const publishedCount = publications.filter((item) => item.status === "PUBLISHED").length;
 
   return (
     <div>
-      <PageHeader
-        title={isSevenDay ? "本期 7 天内容规划" : "本期内容规划"}
-        description="看清这一周期要发什么、为什么发、优先做哪条。"
+      <WorkflowPageHeaderV1
+        page="content-plan"
+        projectId={projectId}
+        title="内容计划"
+        description={displayPlan && !editing ? undefined : "查看并确认本期要制作的内容。"}
+        compact={Boolean(displayPlan && !editing)}
         breadcrumb={[
           { label: "项目", href: "/dashboard/projects" },
           { label: project.name, href: `/dashboard/projects/${projectId}` },
           { label: "内容计划" },
         ]}
       />
-      <ProductionContextHeaderV3
-        projectName={project.name}
-        stageId="planning"
-        completed={displayPlan && canGenerateScript(displayPlan.status) ? ["positioning", "planning"] : ["positioning"]}
-      />
+      {(!displayPlan || editing) && positioning.length > 0 ? (
+        <ProductionContextHeaderV3
+          projectName={project.name}
+          stageId="planning"
+          completed={displayPlan && canGenerateScript(displayPlan.status) ? ["positioning", "planning"] : ["positioning"]}
+        />
+      ) : null}
 
       {loading ? (
-        <p className="text-sm text-neutral-600" aria-live="polite">
-          正在加载内容计划…
-        </p>
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
       ) : null}
 
-      {!loading && loadError ? (
-        <p className="text-sm text-red-600" role="alert">
-          {loadError}
-        </p>
-      ) : null}
-
-      {!loading && !loadError && planError ? (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {planError}
-        </p>
-      ) : null}
+      {!loading && loadError ? <InlineActionErrorV1 message={loadError} /> : null}
+      {!loading && !loadError && planError ? <InlineActionErrorV1 message={planError} /> : null}
 
       {!loading && !loadError && positioning.length === 0 ? (
         <EmptyState
           title="还没有账号定位"
-            description="先完成账号定位，才能创建内容计划。"
-          primaryAction={{ label: "去生成账号定位", href: positioningHref(projectId) }}
+          description="告诉 AI 你的业务和目标，先完成账号定位。"
+          primaryAction={{ label: "开始定位", href: positioningHref(projectId) }}
         />
       ) : null}
 
       {!loading && !loadError && positioning.length > 0 ? (
         <div className="space-y-6">
           {queryWarning ? (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-[var(--acf-danger)]" role="alert">
               {queryWarning}
             </p>
           ) : null}
 
+          {!editing && !(displayPlan && displayView) ? (
+            <LearningContextSummaryV1
+              positioning={currentPositioning?.output}
+              acceptedFeedback={acceptedFeedback}
+              publishedCount={publishedCount || undefined}
+              showIgnoreControl={editing || regenerateAsk}
+              ignored={form.ignoreAcceptedPerformanceFeedback}
+              onToggleIgnore={(ignored) => setForm({ ...form, ignoreAcceptedPerformanceFeedback: ignored })}
+              generatedPlan={Boolean(displayPlan && canGenerateScript(displayPlan.status))}
+            />
+          ) : null}
+          {editing ? (
+            <PlanningAcceptedFeedbackNotice
+              items={acceptedFeedback}
+              ignored={form.ignoreAcceptedPerformanceFeedback}
+              showIgnoreControl
+              onToggleIgnore={(ignored) => setForm({ ...form, ignoreAcceptedPerformanceFeedback: ignored })}
+            />
+          ) : null}
+
           {pending && editing ? (
-            <AITaskState state="RUNNING" stages={["正在规划内容", "正在整理选题", "正在生成计划"]} />
+            <AsyncTaskProgressV1
+              status="RUNNING"
+              label="AI 正在规划本期内容"
+              stages={[{ id: "plan", label: "正在整理选题", state: "current" }]}
+              canLeave
+            />
           ) : null}
-          {actionError ? (
-            <ProductErrorState title="内容计划没有完成" humanMessage={actionError} recoveryAction="稍后重试" />
-          ) : null}
+          {actionError ? <InlineActionErrorV1 message={actionError} /> : null}
 
           {!latest && !editing ? (
             <EmptyState
               title="还没有内容计划"
-              description="选择账号定位和推广策略，生成接下来几天的内容选题。"
-              primaryAction={{ label: "创建内容计划", onClick: () => setEditing(true) }}
+              description="确认账号定位后，AI 可以规划本期内容。"
+              primaryAction={{ label: "生成内容计划", onClick: () => setEditing(true) }}
             />
           ) : null}
 
@@ -352,231 +367,268 @@ function ContentPlansPageInner() {
               pending={pending}
               noStrategyHint={!form.strategyId}
               positioningSummary={positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning}
+              acceptedFeedback={acceptedFeedback}
               onChange={setForm}
               onSubmit={() => void generate()}
               onCancel={latest ? () => setEditing(false) : undefined}
             />
           ) : null}
 
-          {!editing && displayPlan && !displayView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
+          {!editing && displayPlan && !displayView ? <p className="text-sm">该版本无法读取</p> : null}
 
           {!editing && displayPlan && displayView ? (
-            <div className="space-y-4">
-              {pendingNewDraft && draftPlan ? (
-                <section className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm">
-                  <p className="font-medium text-neutral-900">有一份待确认的新规划（版本 {draftPlan.version}）</p>
-                  <p className="mt-1 text-neutral-700">
-                    当前生产仍使用已确认计划。确认新规划后，它才会成为本期生产计划；旧计划历史会保留。
-                  </p>
-                  <button
-                    className="mt-2 rounded-md bg-neutral-950 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-                    type="button"
-                    disabled={pending}
-                    onClick={() => void confirm()}
-                  >
-                    确认新规划
-                  </button>
+            <div data-acf-plan-workspace>
+              {pendingNewDraft && draftPlan && !preferConfirmed ? (
+                <section className="rounded-[var(--acf-radius-md)] border border-[var(--acf-warning)] bg-[var(--acf-warning-soft)] px-4 py-3 text-sm">
+                  <p className="font-medium">有一份新的内容规划等待你确认</p>
+                  <Button className="mt-3" type="button" disabled={pending} onClick={() => void confirm()}>
+                    {pending ? "正在确认…" : "确认本期规划"}
+                  </Button>
+                  {selected.confirmed ? (
+                    <button className="ml-3 text-sm underline" type="button" onClick={() => setPreferConfirmed(true)}>
+                      查看当前已确认版本
+                    </button>
+                  ) : null}
                 </section>
               ) : null}
 
-              <section className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <section className="space-y-3" data-acf-plan-header>
+                <p className="text-sm">
+                  第{displayPlan.version}版 · {planStatusLabel(displayPlan.status)} · {displayView.topicCount}条内容
+                </p>
+                <LearningContextSummaryV1
+                  positioning={currentPositioning?.output}
+                  acceptedFeedback={acceptedFeedback}
+                  publishedCount={publishedCount || undefined}
+                  showIgnoreControl={regenerateAsk}
+                  ignored={form.ignoreAcceptedPerformanceFeedback}
+                  onToggleIgnore={(ignored) => setForm({ ...form, ignoreAcceptedPerformanceFeedback: ignored })}
+                  generatedPlan={Boolean(canGenerateScript(displayPlan.status))}
+                />
+                {pendingConfirmMode && !pendingNewDraft ? (
+                  <Button type="button" disabled={pending} onClick={() => void confirm()}>
+                    {pending ? "正在确认…" : "确认内容计划"}
+                  </Button>
+                ) : null}
+                {confirmedMode && confirmFocusHref ? (
                   <div>
-                    <h2 className="font-medium text-neutral-950">{displayView.title}</h2>
-                    {displayView.summary ? <p className="mt-1 text-neutral-600">{displayView.summary}</p> : null}
-                    <p className="mt-2 text-xs text-neutral-500">
-                      {[
-                        `版本 ${displayPlan.version}`,
-                        planStatusLabel(displayPlan.status),
-                        formatPlanTime(displayPlan.createdAt),
-                        `${progress.topicCount} 条选题`,
-                        confirmedMode ? progress.summaryLabel : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
+                    <Link
+                      className="inline-flex min-h-9 items-center rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-4 text-sm text-[var(--acf-text-inverse)]"
+                      href={confirmFocusHref}
+                    >
+                      {nextAction.kind === "SCRIPT" ? "开始制作第一条脚本" : nextAction.label}
+                    </Link>
+                    <span className="sr-only">为这个选题生成脚本</span>
                   </div>
-                  {confirmedMode ? (
-                    <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-700">已确认</span>
-                  ) : null}
-                </div>
-                {planningConfidence?.level === "low" ? (
-                  <p className="mt-2 text-xs text-amber-900">本轮为验证型内容计划 · 仍可继续制作脚本</p>
+                ) : null}
+                {pendingConfirmMode ? (
+                  <p className="acf-caption">确认后，将进入脚本阶段。回看定位不会清空这份计划。</p>
                 ) : null}
               </section>
 
-              <ContentPlanningWeekOverview
-                items={productionItems}
-                progress={progress}
-                isSevenDay={isSevenDay}
-                currentTopicId={confirmedMode ? currentTopic?.topicId : null}
-                selectedTopicId={focusTopic?.topicId}
-                onSelect={setUserSelectedTopicId}
-              />
-
-              {displayPlan && displayView ? (
+              <section className="mt-8" data-acf-week-section>
+                <h2 className="acf-section-title mb-3">本周内容</h2>
                 <ContentPlanningTopics
-                  view={displayView}
-                  projectId={projectId}
-                  planId={displayPlan.id}
-                  canScript={canGenerateScript(displayPlan.status)}
-                />
-              ) : null}
-
-              {focusTopic && displayPlan ? (
-                <ContentPlanningCurrentFocus
-                  projectId={projectId}
-                  planId={displayPlan.id}
-                  topic={focusTopic}
-                  action={nextAction}
-                  canScript={canGenerateScript(displayPlan.status)}
-                  isCurrentProduction={confirmedMode && focusTopic.topicId === currentTopic?.topicId}
-                />
-              ) : null}
-
-              {planningConfidence ? (
-                <ConfidenceActionCard
-                  view={planningConfidence}
-                  continueLabel={
-                    confirmedMode && confirmFocusHref
-                      ? nextAction.kind === "SCRIPT"
-                        ? "为这个选题生成脚本"
-                        : nextAction.label
-                      : undefined
+                view={displayView}
+                projectId={projectId}
+                planId={displayPlan.id}
+                canScript={canGenerateScript(displayPlan.status)}
+                productionItems={productionItems}
+                scripts={scripts}
+                videos={videos}
+                highlightTopicId={
+                    confirmedMode && nextAction.kind === "SCRIPT" ? nextAction.topic.topicId : null
                   }
-                  continueHref={confirmFocusHref ?? undefined}
                 />
-              ) : null}
+              </section>
 
-              <ExplanationDetails summary="为什么这样规划">
-                <p>
-                  当前推广策略：
-                  {planStrategy
-                    ? `版本 ${planStrategy.version}${
-                        planStrategyParsed?.objective?.primaryObjective
-                          ? ` · ${planStrategyParsed.objective.primaryObjective}`
-                          : ""
-                      }`
-                    : currentStrategyLabel || "未绑定策略"}
-                </p>
-                <p>
-                  账号定位：
-                  {positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning ??
-                    "已选择的账号定位"}
-                </p>
-                <p>
-                  计划目标：{displayPlan.planningDays ?? displayView.days ?? form.planningDays} 天 · 每天{" "}
-                  {displayPlan.postsPerDay ?? form.postsPerDay} 条选题
-                </p>
-                {planStrategyParsed?.dataLimitations?.length ? (
-                  <p>
-                    市场分析限制：
-                    {planStrategyParsed.dataLimitations.map(humanizeStrategyLimitation).join("；")}
-                    。本轮更适合作为验证型计划。
-                  </p>
-                ) : (
-                  <p>市场分析限制：当前未额外标注限制，仍建议用首轮内容验证。</p>
-                )}
-                <p>历史表现反馈：若已有发布数据，下一轮计划会更能贴合真实表现；当前不阻塞继续做脚本。</p>
-              </ExplanationDetails>
-
-              <div className="flex flex-wrap gap-2">
-                {pendingConfirmMode ? (
-                  <button
-                    className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white disabled:opacity-50"
-                    type="button"
-                    disabled={pending}
-                    onClick={() => void confirm()}
-                  >
-                    确认内容计划
-                  </button>
-                ) : null}
-                {confirmedMode && confirmFocusHref ? (
-                  <Link className="rounded-md bg-neutral-950 px-4 py-2 text-sm text-white" href={confirmFocusHref}>
-                    {nextAction.kind === "COMPLETE" ? nextAction.label : nextAction.label}
-                  </Link>
-                ) : null}
-                <button
-                  className="rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-700"
-                  type="button"
-                  disabled={pending}
-                  onClick={() => setRegenerateAsk(true)}
-                  title="会基于当前策略重新生成一套新的本期内容规划；现有计划历史会保留。"
-                >
-                  重新规划本周内容
-                </button>
-                {productionPlan && canArchivePlan(productionPlan.status) ? (
-                  <button
-                    className="rounded-md border px-4 py-2 text-sm"
-                    type="button"
-                    disabled={pending}
-                    onClick={() => setArchiveAsk(true)}
-                  >
-                    归档计划
-                  </button>
-                ) : null}
-              </div>
-
-              {pendingConfirmMode ? (
-                <p className="text-sm text-neutral-600">确认后，将进入脚本阶段。回看定位不会清空这份计划。</p>
-              ) : null}
-
-              {regenerateAsk ? (
-                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm">
-                  <p>会基于当前策略重新生成一套新的本期内容规划；现有计划历史会保留，不会覆盖旧版本。</p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
-                      type="button"
-                      onClick={() => {
-                        setRegenerateAsk(false);
-                        setEditing(true);
-                      }}
-                    >
-                      继续重新规划
-                    </button>
-                    <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setRegenerateAsk(false)}>
-                      取消
-                    </button>
+              <section className="mt-10 bg-[var(--acf-surface-muted)]" data-acf-plan-secondary>
+                <details data-acf-planning-more>
+                  <summary className="cursor-pointer text-sm text-[var(--acf-text-secondary)]">更多</summary>
+                  <div className="mt-1 divide-y divide-[var(--acf-border-subtle)]" data-acf-planning-more-index>
+                    <details>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2.5 text-sm">
+                        <span>
+                          制作进度
+                          <span className="acf-caption ml-2">脚本、视频与发布数量</span>
+                        </span>
+                        <span className="acf-caption" aria-hidden>
+                          &gt;
+                        </span>
+                      </summary>
+                      <dl className="space-y-1 pb-3 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-[var(--acf-text-secondary)]">脚本</dt>
+                          <dd>
+                            {progress.scriptReadyCount} / {progress.topicCount || displayView.topicCount}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-[var(--acf-text-secondary)]">视频</dt>
+                          <dd>
+                            {progress.videoReadyCount} / {progress.topicCount || displayView.topicCount}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-[var(--acf-text-secondary)]">发布</dt>
+                          <dd>
+                            {progress.publishedCount} / {progress.topicCount || displayView.topicCount}
+                          </dd>
+                        </div>
+                        {progress.topicCount > 0 ? (
+                          <div className="flex justify-between gap-4">
+                            <dt className="text-[var(--acf-text-secondary)]">已进入制作</dt>
+                            <dd>
+                              {progress.enteredProductionCount} / {progress.topicCount}
+                            </dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                      {confirmedMode && confirmFocusHref ? (
+                        <Link className="mb-3 inline-block text-sm text-[var(--acf-text-secondary)] underline" href={confirmFocusHref}>
+                          查看脚本工作台
+                        </Link>
+                      ) : null}
+                    </details>
+                    <details>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2.5 text-sm">
+                        <span>
+                          为什么这样规划
+                          <span className="acf-caption ml-2">策略与计划依据</span>
+                        </span>
+                        <span className="acf-caption" aria-hidden>
+                          &gt;
+                        </span>
+                      </summary>
+                      <div className="space-y-2 pb-3 text-sm text-[var(--acf-text-secondary)]">
+                        <p>
+                          当前推广策略：
+                          {planStrategy
+                            ? `第${planStrategy.version}版${
+                                planStrategyParsed?.objective?.primaryObjective
+                                  ? ` · ${planStrategyParsed.objective.primaryObjective}`
+                                  : ""
+                              }`
+                            : currentStrategyLabel || "未绑定策略"}
+                        </p>
+                        <p>
+                          账号定位：
+                          {positioning.find((item) => item.runId === form.positioningRunId)?.output.accountPositioning ??
+                            "已选择的账号定位"}
+                        </p>
+                        <p>
+                          计划目标：{displayPlan.planningDays ?? displayView.days ?? form.planningDays} 天 · 每天{" "}
+                          {displayPlan.postsPerDay ?? form.postsPerDay} 条选题
+                        </p>
+                        {planStrategyParsed?.dataLimitations?.length ? (
+                          <p>
+                            市场分析限制：
+                            {planStrategyParsed.dataLimitations.map(humanizeStrategyLimitation).join("；")}
+                            。本轮更适合作为验证型计划。
+                          </p>
+                        ) : (
+                          <p>市场分析限制：当前未额外标注限制，仍建议用首轮内容验证。</p>
+                        )}
+                        <p>历史表现反馈：若已有发布数据，下一轮计划会更能贴合真实表现；当前不阻塞继续做脚本。</p>
+                      </div>
+                    </details>
+                    <details>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2.5 text-sm">
+                        <span>
+                          历史版本
+                          <span className="acf-caption ml-2">只读查看</span>
+                        </span>
+                        <span className="acf-caption" aria-hidden>
+                          &gt;
+                        </span>
+                      </summary>
+                      <div className="pb-3">
+                        <ContentPlanningHistory
+                          embedded
+                          items={planHistoryViews(plans, strategyByPlanId)}
+                          projectId={projectId}
+                          resolveView={(version) => {
+                            const record = plans.find((item) => item.version === version);
+                            if (!record) {
+                              return null;
+                            }
+                            return { record, view: parsedPlanView(record) };
+                          }}
+                        />
+                      </div>
+                    </details>
+                    <details>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2.5 text-sm">
+                        <span>
+                          重新规划本周内容
+                          <span className="acf-caption ml-2">生成新版本</span>
+                        </span>
+                        <span className="acf-caption" aria-hidden>
+                          &gt;
+                        </span>
+                      </summary>
+                      <div className="pb-3">
+                        <p className="text-sm text-[var(--acf-text-secondary)]">
+                          重新规划会生成新版本，不会覆盖已确认历史版本。
+                        </p>
+                        {!regenerateAsk ? (
+                          <Button className="mt-2" variant="secondary" type="button" disabled={pending} onClick={() => setRegenerateAsk(true)}>
+                            重新规划本周内容
+                          </Button>
+                        ) : (
+                          <div className="mt-2 text-sm">
+                            <p>将生成一个新版本，不会覆盖已确认的历史版本。</p>
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                variant="secondary"
+                                type="button"
+                                onClick={() => {
+                                  setRegenerateAsk(false);
+                                  setEditing(true);
+                                }}
+                              >
+                                继续重新规划
+                              </Button>
+                              <Button variant="ghost" type="button" onClick={() => setRegenerateAsk(false)}>
+                                取消
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        {productionPlan && canArchivePlan(productionPlan.status) ? (
+                          <Button className="mt-2" variant="ghost" type="button" disabled={pending} onClick={() => setArchiveAsk(true)}>
+                            归档计划
+                          </Button>
+                        ) : null}
+                        {archiveAsk ? (
+                          <div className="mt-2 text-sm">
+                            <p>归档后，这份计划不再作为当前生产计划使用。</p>
+                            <div className="mt-2 flex gap-2">
+                              <Button variant="secondary" type="button" disabled={pending} onClick={() => void archive()}>
+                                确认归档
+                              </Button>
+                              <Button variant="ghost" type="button" onClick={() => setArchiveAsk(false)}>
+                                取消
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </details>
                   </div>
-                </div>
-              ) : null}
-
-              {archiveAsk ? (
-                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm">
-                  <p>归档后，这份计划不再作为当前生产计划使用。</p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
-                      type="button"
-                      disabled={pending}
-                      onClick={() => void archive()}
-                    >
-                      确认归档
-                    </button>
-                    <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setArchiveAsk(false)}>
-                      取消
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+                </details>
+              </section>
             </div>
           ) : null}
-
-          <ContentPlanningHistory
-            items={planHistoryViews(plans, strategyByPlanId)}
-            projectId={projectId}
-            resolveView={(version) => {
-              const record = plans.find((item) => item.version === version);
-              if (!record) {
-                return null;
-              }
-              return { record, view: parsedPlanView(record) };
-            }}
-          />
         </div>
       ) : null}
-      <WorkflowFooterV3 projectId={projectId} stageId="planning" />
+      <NextActionBarV1
+        backHref={flow.back?.href}
+        backLabel={flow.back?.label}
+        currentLabel="内容计划"
+        nextHref={flow.next?.href}
+        nextLabel={flow.next?.label}
+      />
     </div>
   );
 }

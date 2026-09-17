@@ -5,6 +5,7 @@ export type PublishedPostRecord = {
   title?: string | null;
   projectId?: string | null;
   publicationId?: string | null;
+  videoId?: string | null;
   platformPostId?: string | null;
   platformUrl?: string | null;
   publishedAt?: string | null;

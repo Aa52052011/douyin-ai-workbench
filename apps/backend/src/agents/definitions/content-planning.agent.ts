@@ -34,6 +34,333 @@ const LIMITS = {
 } as const;
 
 const PRIORITIES = new Set(['high', 'medium', 'low']);
+const PRIORITY_ALIASES: Record<string, 'high' | 'medium' | 'low'> = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  高: 'high',
+  中: 'medium',
+  低: 'low',
+};
+
+export function canonicalizePillarName(raw: unknown, allowed: string[]): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (allowed.includes(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.length < 2) {
+    return null;
+  }
+  const matches = allowed.filter((name) => name.includes(trimmed) || trimmed.includes(name));
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function asInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    if (Math.abs(value - rounded) < 1e-9) {
+      return rounded;
+    }
+    return null;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value.trim());
+    if (!Number.isFinite(n)) {
+      return null;
+    }
+    const rounded = Math.round(n);
+    return Math.abs(n - rounded) < 1e-9 ? rounded : null;
+  }
+  return null;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value.trim()))) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function coerceKeywords(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => (typeof entry === 'string' ? entry : entry == null ? '' : String(entry)));
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[,，、]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return value;
+}
+
+function coerceTextField(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+      .join('；');
+    return joined || null;
+  }
+  if (isRecord(value) && typeof value.description === 'string' && value.description.trim()) {
+    return value.description.trim();
+  }
+  return null;
+}
+
+function coerceScheduledDate(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1];
+}
+
+export function normalizeContentPlanModelJson(value: unknown, pillarNames: string[]): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const next: Record<string, unknown> = { ...value };
+  const title = coerceTextField(next.title);
+  const summary = coerceTextField(next.summary);
+  const platform = coerceTextField(next.platform);
+  if (title) {
+    next.title = title;
+  }
+  if (summary) {
+    next.summary = summary;
+  }
+  if (platform) {
+    next.platform = platform;
+  }
+  next.trendNote = coerceTextField(next.trendNote) ?? EMPTY_TREND_NOTE;
+  if (next.contentStyle !== undefined && next.contentStyle !== null) {
+    const style = coerceTextField(next.contentStyle);
+    if (style) {
+      next.contentStyle = style;
+    } else {
+      delete next.contentStyle;
+    }
+  }
+  if (next.additionalRequirements !== undefined && next.additionalRequirements !== null) {
+    const extra = coerceTextField(next.additionalRequirements);
+    if (extra) {
+      next.additionalRequirements = extra;
+    } else {
+      delete next.additionalRequirements;
+    }
+  }
+  if (next.usedTrendData === 'true' || next.usedTrendData === 1) {
+    next.usedTrendData = true;
+  } else if (next.usedTrendData === 'false' || next.usedTrendData === 0) {
+    next.usedTrendData = false;
+  }
+  if (Array.isArray(next.pillarAllocation)) {
+    next.pillarAllocation = next.pillarAllocation.map((row) => {
+      if (!isRecord(row)) {
+        return row;
+      }
+      const pillarName = canonicalizePillarName(row.pillarName, pillarNames) ?? row.pillarName;
+      return {
+        ...row,
+        pillarName,
+        percentage: asFiniteNumber(row.percentage) ?? row.percentage,
+        topicCount: asInt(row.topicCount) ?? row.topicCount,
+      };
+    });
+  }
+  if (Array.isArray(next.topics)) {
+    next.topics = next.topics.map((item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const priorityKey = typeof item.priority === 'string' ? item.priority.trim() : '';
+      const keywords = coerceKeywords(item.keywords);
+      const estimatedDuration =
+        typeof item.estimatedDuration === 'number' && Number.isFinite(item.estimatedDuration)
+          ? `${item.estimatedDuration}`
+          : item.estimatedDuration;
+      const targetAudience = coerceTextField(item.targetAudience);
+      const painPoint = coerceTextField(item.painPoint);
+      const contentAngle = coerceTextField(item.contentAngle);
+      const format = coerceTextField(item.format);
+      const hook = coerceTextField(item.hook);
+      const reason = coerceTextField(item.reason);
+      const cta = coerceTextField(item.cta);
+      const title = coerceTextField(item.title);
+      return {
+        ...item,
+        title: title ?? item.title,
+        hook: hook ?? item.hook,
+        dayIndex: asInt(item.dayIndex) ?? item.dayIndex,
+        priority: PRIORITY_ALIASES[priorityKey] ?? PRIORITY_ALIASES[priorityKey.toLowerCase()] ?? item.priority,
+        contentPillar: canonicalizePillarName(item.contentPillar, pillarNames) ?? item.contentPillar,
+        keywords,
+        estimatedDuration,
+        targetAudience: targetAudience ?? item.targetAudience,
+        painPoint: painPoint ?? item.painPoint,
+        contentAngle: contentAngle ?? item.contentAngle,
+        format: format ?? item.format,
+        reason: reason ?? item.reason,
+        cta: cta ?? item.cta,
+        scheduledDate: coerceScheduledDate(item.scheduledDate),
+      };
+    });
+  }
+  return next;
+}
+
+export function diagnoseContentPlanOutput(
+  value: unknown,
+  expected: { planningDays: number; postsPerDay: number; pillarNames: string[] },
+): string {
+  if (!isRecord(value)) {
+    return 'NOT_OBJECT';
+  }
+  const required = [
+    'title',
+    'summary',
+    'planningDays',
+    'postsPerDay',
+    'platform',
+    'pillarAllocation',
+    'usedTrendData',
+    'trendNote',
+    'topics',
+  ];
+  for (const key of required) {
+    if (!(key in value)) {
+      return `MISSING_FIELD:${key}`;
+    }
+  }
+  if (!Array.isArray(value.topics)) {
+    return 'TOPICS_NOT_ARRAY';
+  }
+  const expectedCount = expected.planningDays * expected.postsPerDay;
+  if (value.topics.length !== expectedCount) {
+    return `TOPIC_COUNT:${value.topics.length}!=${expectedCount}`;
+  }
+  if (!Array.isArray(value.pillarAllocation)) {
+    return 'ALLOCATION_NOT_ARRAY';
+  }
+  try {
+    validateContentPlanOutput(value, expected);
+    return 'OK';
+  } catch {
+    return diagnoseNormalizedContentPlan(normalizeContentPlanModelJson(value, expected.pillarNames), expected);
+  }
+}
+
+function diagnoseNormalizedContentPlan(
+  value: unknown,
+  expected: { planningDays: number; postsPerDay: number; pillarNames: string[] },
+): string {
+  if (!isRecord(value) || !Array.isArray(value.topics) || !Array.isArray(value.pillarAllocation)) {
+    return 'SCHEMA_FIELD_INVALID';
+  }
+  for (const key of ['title', 'summary', 'platform', 'trendNote']) {
+    if (typeof value[key] !== 'string' || !String(value[key]).trim()) {
+      return `ROOT:${key}:${value[key] === undefined ? 'missing' : typeof value[key]}`;
+    }
+  }
+  if (
+    'contentStyle' in value &&
+    value.contentStyle != null &&
+    (typeof value.contentStyle !== 'string' || !String(value.contentStyle).trim())
+  ) {
+    return 'ROOT:contentStyle';
+  }
+  if (
+    'additionalRequirements' in value &&
+    value.additionalRequirements != null &&
+    (typeof value.additionalRequirements !== 'string' || !String(value.additionalRequirements).trim())
+  ) {
+    return 'ROOT:additionalRequirements';
+  }
+  const stringKeys = [
+    'title',
+    'hook',
+    'contentPillar',
+    'targetAudience',
+    'painPoint',
+    'contentAngle',
+    'format',
+    'estimatedDuration',
+    'reason',
+    'cta',
+  ];
+  for (const [index, item] of value.topics.entries()) {
+    if (!isRecord(item)) {
+      return `TOPIC:${index}:NOT_OBJECT`;
+    }
+    const dayIndex = item.dayIndex;
+    if (typeof dayIndex !== 'number' || !Number.isInteger(dayIndex) || dayIndex < 1 || dayIndex > expected.planningDays) {
+      return `TOPIC:${index}:dayIndex:${typeof dayIndex}`;
+    }
+    if (typeof item.priority !== 'string' || !PRIORITIES.has(item.priority)) {
+      return `TOPIC:${index}:priority`;
+    }
+    if (typeof item.contentPillar !== 'string' || !expected.pillarNames.includes(item.contentPillar)) {
+      return `TOPIC:${index}:PILLAR_NAME_MISMATCH`;
+    }
+    for (const key of stringKeys) {
+      if (typeof item[key] !== 'string' || !String(item[key]).trim()) {
+        return `TOPIC:${index}:${key}:${item[key] === undefined ? 'missing' : typeof item[key]}`;
+      }
+    }
+    if (!Array.isArray(item.keywords) || !item.keywords.every((entry) => typeof entry === 'string')) {
+      return `TOPIC:${index}:keywords:${Array.isArray(item.keywords) ? 'mixed' : typeof item.keywords}`;
+    }
+    if (item.scheduledDate !== undefined && item.scheduledDate !== null && item.scheduledDate !== '') {
+      if (typeof item.scheduledDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.scheduledDate)) {
+        return `TOPIC:${index}:scheduledDate`;
+      }
+    }
+  }
+  for (const [index, row] of value.pillarAllocation.entries()) {
+    if (!isRecord(row)) {
+      return `ALLOCATION:${index}:NOT_OBJECT`;
+    }
+    if (typeof row.pillarName !== 'string' || !expected.pillarNames.includes(row.pillarName)) {
+      return `ALLOCATION:${index}:PILLAR_NAME_MISMATCH`;
+    }
+    if (typeof row.percentage !== 'number' || !Number.isFinite(row.percentage)) {
+      return `ALLOCATION:${index}:percentage:${typeof row.percentage}`;
+    }
+    if (typeof row.topicCount !== 'number' || !Number.isInteger(row.topicCount) || row.topicCount < 0) {
+      return `ALLOCATION:${index}:topicCount:${typeof row.topicCount}`;
+    }
+  }
+  const allocated = value.pillarAllocation
+    .filter(isRecord)
+    .reduce((sum, row) => sum + (typeof row.topicCount === 'number' ? row.topicCount : 0), 0);
+  if (allocated !== value.topics.length) {
+    return `ALLOCATION_SUM:${allocated}!=${value.topics.length}`;
+  }
+  const titles = value.topics.filter(isRecord).map((item) => item.title);
+  if (new Set(titles).size !== titles.length) {
+    return 'TOPIC_TITLE_DUPLICATE';
+  }
+  return 'SCHEMA_FIELD_INVALID';
+}
 
 export const contentPlanningDefinition: AgentDefinition = {
   id: CONTENT_PLANNING_AGENT_ID,
@@ -61,6 +388,7 @@ export const contentPlanningDefinition: AgentDefinition = {
       campaignStrategy: { type: 'object' },
       trendData: { type: 'object' },
       performanceFeedback: { type: 'object' },
+      acceptedPerformanceFeedback: { type: 'array' },
       learningContext: { type: 'object' },
     },
   },
@@ -121,6 +449,7 @@ export function parseContentPlanningInput(input: unknown): ContentPlanningInput 
     campaignStrategy: optionalCampaignStrategy(input.campaignStrategy),
     trendData: optionalTrendData(input.trendData),
     performanceFeedback: optionalPerformanceFeedback(input.performanceFeedback),
+    acceptedPerformanceFeedback: optionalAcceptedPerformanceFeedback(input.acceptedPerformanceFeedback),
     learningContext: optionalLearningContext(input.learningContext),
   };
 }
@@ -137,6 +466,7 @@ export function validateContentPlanOutput(
   value: unknown,
   expected: { planningDays: number; postsPerDay: number; pillarNames: string[] },
 ): ContentPlanOutput {
+  value = normalizeContentPlanModelJson(value, expected.pillarNames);
   if (!isRecord(value)) {
     throw new AgentError(ErrorCode.AGENT_INVALID_OUTPUT);
   }
@@ -345,6 +675,33 @@ function optionalTrendData(value: unknown): TrendDataSnapshot | undefined {
   };
 }
 
+function optionalAcceptedPerformanceFeedback(
+  value: unknown,
+): ContentPlanningInput['acceptedPerformanceFeedback'] {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
+  }
+  return value.map((item) => {
+    if (!isRecord(item) || typeof item.recommendedAction !== 'string' || typeof item.category !== 'string') {
+      throw new AgentError(ErrorCode.AGENT_INVALID_INPUT);
+    }
+    return {
+      recommendationId: typeof item.recommendationId === 'string' ? item.recommendationId : undefined,
+      category: item.category,
+      recommendedAction: item.recommendedAction,
+      supportingEvidence: Array.isArray(item.supportingEvidence)
+        ? item.supportingEvidence.filter((row): row is string => typeof row === 'string')
+        : [],
+      sourcePublicationId: typeof item.sourcePublicationId === 'string' ? item.sourcePublicationId : '',
+      sourceAnalysisId: typeof item.sourceAnalysisId === 'string' ? item.sourceAnalysisId : '',
+      reviewedAt: typeof item.reviewedAt === 'string' ? item.reviewedAt : null,
+    };
+  });
+}
+
 function optionalPerformanceFeedback(value: unknown): CompactPerformanceFeedback | undefined {
   if (value === undefined || value === null) {
     return undefined;
@@ -489,13 +846,7 @@ function optionalOutputString(record: Record<string, unknown>, key: string): str
 }
 
 function optionalDate(value: unknown): string | undefined {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new AgentError(ErrorCode.AGENT_INVALID_OUTPUT);
-  }
-  return value;
+  return coerceScheduledDate(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

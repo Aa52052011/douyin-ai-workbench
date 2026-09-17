@@ -4,6 +4,7 @@ import type { PlanningFormState } from "../lib/content-planning.types";
 import { expectedTopicCount } from "../lib/content-planning.form";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/input";
+import { PlanningAcceptedFeedbackNotice, type PlanningAcceptedFeedbackItem } from "./planning-accepted-feedback-notice";
 
 export function ContentPlanningForm({
   form,
@@ -12,6 +13,7 @@ export function ContentPlanningForm({
   pending,
   noStrategyHint,
   positioningSummary,
+  acceptedFeedback,
   onChange,
   onSubmit,
   onCancel,
@@ -22,6 +24,7 @@ export function ContentPlanningForm({
   pending: boolean;
   noStrategyHint: boolean;
   positioningSummary?: string;
+  acceptedFeedback?: PlanningAcceptedFeedbackItem[];
   onChange: (next: PlanningFormState) => void;
   onSubmit: () => void;
   onCancel?: () => void;
@@ -31,13 +34,19 @@ export function ContentPlanningForm({
 
   return (
     <form
-      className="mx-auto max-w-xl space-y-5 rounded-xl border border-neutral-200 bg-white p-4"
+      className="mx-auto max-w-xl space-y-5 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
       }}
     >
       <p className="text-sm text-neutral-600">已使用账号定位、目标用户、平台和内容风格，无需再填一遍。</p>
+      <PlanningAcceptedFeedbackNotice
+        items={acceptedFeedback ?? []}
+        ignored={form.ignoreAcceptedPerformanceFeedback}
+        showIgnoreControl
+        onToggleIgnore={(ignored) => onChange({ ...form, ignoreAcceptedPerformanceFeedback: ignored })}
+      />
       <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm" data-acf-planning-reused-positioning>
         <p className="font-medium">当前账号定位</p>
         <p className="mt-1 text-neutral-700">{positioningSummary || selected?.accountPositioning || "已根据账号定位填写"}</p>
@@ -64,7 +73,7 @@ export function ContentPlanningForm({
               <span className="mb-1 block font-medium">如需更换定位版本</span>
               <select
                 id="planning-positioning"
-                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                className="acf-field w-full rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm"
                 value={form.positioningRunId}
                 disabled={pending}
                 onChange={(event) => onChange({ ...form, positioningRunId: event.target.value })}
@@ -84,7 +93,7 @@ export function ContentPlanningForm({
             <span className="mb-1 block font-medium">推广策略（可选）</span>
             <select
               id="planning-strategy"
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              className="acf-field w-full rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm"
               value={form.strategyId}
               disabled={pending}
               onChange={(event) => onChange({ ...form, strategyId: event.target.value })}

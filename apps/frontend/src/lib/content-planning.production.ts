@@ -287,6 +287,69 @@ export function nextActionHref(projectId: string, planId: string, action: NextPr
   return null;
 }
 
+export type TopicUserFacingV2 = {
+  label: string;
+  ctaLabel: string;
+  href: string | null;
+};
+
+function latestScriptForTopic(scripts: ScriptRecord[], planId: string, topicId: string): ScriptRecord | null {
+  const matched = scripts
+    .filter((item) => item.contentPlanId === planId && item.topicId === topicId)
+    .sort((a, b) => b.version - a.version || +new Date(b.createdAt) - +new Date(a.createdAt));
+  return matched[0] ?? null;
+}
+
+/** UI-only status for topic cards. Does not write back to plan payload. */
+export function resolveTopicUserFacingV2(input: {
+  projectId: string;
+  planId: string;
+  planConfirmed: boolean;
+  item: TopicProductionItem;
+  scripts: ScriptRecord[];
+  videos: VideoRecord[];
+}): TopicUserFacingV2 {
+  const scriptHref = scriptHrefForTopic(input.projectId, input.planId, input.item.topicId);
+  if (!input.planConfirmed) {
+    return { label: "待确认本期规划", ctaLabel: "查看详情", href: null };
+  }
+  const script = latestScriptForTopic(input.scripts, input.planId, input.item.topicId);
+  if (!script) {
+    return { label: "待制作脚本", ctaLabel: "制作脚本", href: scriptHref };
+  }
+  if (script.status === "DRAFT") {
+    return { label: "脚本待确认", ctaLabel: "查看脚本", href: scriptHref };
+  }
+  const video = input.item.scriptId
+    ? input.videos
+        .filter((item) => item.scriptId === input.item.scriptId)
+        .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))[0]
+    : input.videos
+        .filter((item) => item.scriptId === script.id)
+        .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))[0];
+  if (!video) {
+    return {
+      label: "待制作视频",
+      ctaLabel: "制作视频",
+      href: videoHrefForScript(input.projectId, script.id),
+    };
+  }
+  if (video.status === "COMPLETED" && video.finalAcceptance?.current !== true) {
+    return { label: "视频待审核", ctaLabel: "去审核", href: `/dashboard/projects/${input.projectId}/content/videos?scriptId=${encodeURIComponent(script.id)}` };
+  }
+  if (input.item.status === "VIDEO_READY" || (video.finalAcceptance?.current === true && input.item.status !== "PUBLISHED")) {
+    return {
+      label: "待发布",
+      ctaLabel: "去发布",
+      href: video.id ? publishHrefForVideo(input.projectId, video.id) : `/dashboard/projects/${input.projectId}/publish`,
+    };
+  }
+  if (input.item.status === "PUBLISHED") {
+    return { label: "已发布", ctaLabel: "查看发布", href: `/dashboard/projects/${input.projectId}/publish` };
+  }
+  return { label: "待制作脚本", ctaLabel: "制作脚本", href: scriptHref };
+}
+
 export function isSevenDaySingleTrack(plan: ContentPlanRecord, topicCount: number): boolean {
   const days = plan.planningDays ?? parsePlanPayload(plan.payload)?.planningDays ?? 7;
   const posts = plan.postsPerDay ?? parsePlanPayload(plan.payload)?.postsPerDay ?? 1;

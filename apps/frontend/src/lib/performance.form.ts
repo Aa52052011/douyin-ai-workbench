@@ -157,17 +157,37 @@ export function formatObservedAt(value?: string | null): string {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-export function hoursSince(publishedAt?: string | null, observedAt?: string | null): string {
-  if (!publishedAt || !observedAt) {
+export function formatObservationDuration(startAt?: string | null, endAt?: string | null): string {
+  if (!startAt || !endAt) {
     return "";
   }
-  const start = new Date(publishedAt).getTime();
-  const end = new Date(observedAt).getTime();
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
     return "";
   }
-  const hours = Math.round((end - start) / 36e5);
-  return `${hours} 小时`;
+  const totalMinutes = Math.round((end - start) / 60_000);
+  if (totalMinutes < 60) {
+    return `${totalMinutes} 分钟`;
+  }
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const afterDays = totalMinutes % (24 * 60);
+  const hours = Math.floor(afterDays / 60);
+  const minutes = afterDays % 60;
+  if (days > 0) {
+    if (hours === 0 && minutes === 0) return `${days} 天`;
+    if (minutes === 0) return `${days} 天 ${hours} 小时`;
+    if (hours === 0) return `${days} 天 ${minutes} 分钟`;
+    return `${days} 天 ${hours} 小时 ${minutes} 分钟`;
+  }
+  if (minutes === 0) {
+    return `${hours} 小时`;
+  }
+  return `${hours} 小时 ${minutes} 分钟`;
+}
+
+export function hoursSince(startAt?: string | null, endAt?: string | null): string {
+  return formatObservationDuration(startAt, endAt);
 }
 
 export function humanizeMetricsError(error: unknown): string {

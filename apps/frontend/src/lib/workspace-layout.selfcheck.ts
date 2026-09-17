@@ -36,19 +36,23 @@ function run() {
   assert.match(market, /onOpenImport/);
 
   const scripts = read("src/app/dashboard/projects/[projectId]/content/scripts/page.tsx");
-  assert.match(scripts, /WorkspacePageShell/);
-  assert.match(scripts, /sidebar=\{actions\}/);
+  assert.doesNotMatch(scripts, /WorkspacePageShell/);
+  assert.doesNotMatch(scripts, /data-acf-workspace-scroll/);
+  assert.match(scripts, /ScriptProductionQueue/);
+  assert.match(scripts, /data-acf-script-workspace/);
 
   const videos = read("src/app/dashboard/projects/[projectId]/content/videos/page.tsx");
-  assert.match(videos, /WorkspacePageShell/);
-  assert.match(videos, /sidebar=\{actions\}/);
+  assert.doesNotMatch(videos, /WorkspacePageShell/);
+  assert.doesNotMatch(videos, /data-acf-workspace-scroll/);
   assert.match(videos, /重试生成/);
   assert.match(videos, /重新生成视频/);
+  assert.match(videos, /data-acf-video-workspace/);
 
   const projectShell = read("src/components/project-shell.tsx");
   assert.match(projectShell, /px-3 py-4 md:px-4/);
   assert.match(projectShell, /lg:w-52/);
   assert.match(projectShell, /projectPlatformLabel/);
+  assert.match(projectShell, /data-acf-project-compact-header-v1/);
 
   const strategy = read("src/app/dashboard/projects/[projectId]/strategy/page.tsx");
   assert.doesNotMatch(strategy, /WorkspacePageShell/);

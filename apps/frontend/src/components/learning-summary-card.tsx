@@ -9,7 +9,7 @@ export function LearningSummaryCard({
 }) {
   const status = learning?.statusLabel ?? "数据不足，系统正在积累";
   return (
-    <section className="min-w-0 break-words rounded-xl border border-neutral-200 bg-white p-4" data-acf-learning-summary>
+    <section className="min-w-0 break-words rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface-muted)] p-4" data-acf-learning-summary>
       <h2 className="text-sm font-medium">系统学习状态</h2>
       <p className="mt-2 text-sm text-neutral-800">{status}</p>
       {learning?.summary.slice(0, 3).map((item) => (

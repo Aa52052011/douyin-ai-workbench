@@ -35,6 +35,8 @@ export function parseVideoRecord(value: unknown): VideoRecord | null {
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : undefined,
     job: parseJobRecord(value.job),
     outputAsset: parseAssetRecord(value.outputAsset),
+    landscapeAsset: parseAssetRecord(value.landscapeAsset),
+    finalAcceptance: parseFinalAcceptance(value.finalAcceptance),
   };
 }
 
@@ -49,6 +51,23 @@ function parseJobRecord(value: unknown): VideoJobRecord | null {
     error: value.error,
     startedAt: typeof value.startedAt === "string" ? value.startedAt : null,
     completedAt: typeof value.completedAt === "string" ? value.completedAt : null,
+  };
+}
+
+function parseFinalAcceptance(value: unknown): VideoRecord["finalAcceptance"] {
+  if (!isRecord(value) || !asText(value.id) || !asText(value.acceptedArtifactId)) {
+    return null;
+  }
+  if (value.current !== true && value.current !== false) {
+    return null;
+  }
+  return {
+    id: String(value.id),
+    current: value.current === true,
+    acceptedArtifactId: String(value.acceptedArtifactId),
+    variant: asText(value.variant) || "VERTICAL",
+    status: asText(value.status) || "ACCEPTED",
+    acceptedAt: typeof value.acceptedAt === "string" ? value.acceptedAt : undefined,
   };
 }
 

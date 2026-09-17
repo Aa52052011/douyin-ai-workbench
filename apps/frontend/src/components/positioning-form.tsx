@@ -71,7 +71,7 @@ export function PositioningForm({
 
   return (
     <form
-      className="mx-auto max-w-xl space-y-5 rounded-xl border border-neutral-200 bg-white p-4"
+      className="mx-auto max-w-xl space-y-5 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();

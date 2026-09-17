@@ -6,7 +6,7 @@ import { AppError, ErrorCode } from '../../../common/errors/app-error.js';
 import { MockSubtitleProvider } from '../../../media/providers/mock-subtitle.provider.js';
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
 import { reusableAssetIds } from '../asset-reuse.js';
-import { buildSubtitleCues } from '../srt.js';
+import { cuesFromSpeechMarks, estimateSentenceCues, speechMarksFromMetadata, type SubtitleCue } from '../srt.js';
 import { findReusableSubtitleAsset } from '../subtitle-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
 
@@ -18,7 +18,7 @@ export class SubtitleGenerationStage {
     ctx: StageContext,
     voiceDuration: number,
     voiceAssetId?: string,
-    opts?: { force?: boolean; cues?: ReturnType<typeof buildSubtitleCues> },
+    opts?: { force?: boolean; cues?: SubtitleCue[] },
   ): Promise<string> {
     const output = asPipelineOutput(ctx.job.output);
     const reused = opts?.force ? null : await reusableAssetIds(ctx, output.stages.subtitle?.assetIds);
@@ -51,7 +51,7 @@ export class SubtitleGenerationStage {
     if (ctx.failStage === 'subtitle') {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
     }
-    const cues = opts?.cues ?? buildSubtitleCues(ctx.plan.voice.text, voiceDuration);
+    const cues = await this.resolveCues(ctx, voiceDuration, voiceId, opts);
     const assetId = randomUUID();
     const key = buildStorageKey({
       tenantId: ctx.job.tenantId,
@@ -85,6 +85,7 @@ export class SubtitleGenerationStage {
           stage: 'subtitle',
           generationVersion: ctx.generationVersion,
           format: 'srt',
+          timingSource: 'audio_aligned',
           ...(voiceId ? { voiceAssetId: voiceId } : {}),
           voiceDurationExact: voiceDuration,
         },
@@ -102,5 +103,30 @@ export class SubtitleGenerationStage {
       },
     });
     return assetId;
+  }
+
+  private async resolveCues(
+    ctx: StageContext,
+    voiceDuration: number,
+    voiceId: string | undefined,
+    opts?: { cues?: SubtitleCue[] },
+  ): Promise<SubtitleCue[]> {
+    if (opts?.cues?.length) {
+      return opts.cues.map((item) => ({ ...item, text: item.text }));
+    }
+    if (voiceId) {
+      const voice = await ctx.prisma.asset.findFirst({
+        where: { id: voiceId, tenantId: ctx.job.tenantId, deletedAt: null },
+      });
+      const marks = speechMarksFromMetadata(voice?.metadata);
+      if (marks.length > 0) {
+        return cuesFromSpeechMarks(marks, voiceDuration);
+      }
+      const provider = voice?.provider ?? '';
+      if (provider === 'minimax-tts') {
+        throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED, 'MINIMAX_SUBTITLE_TIMING missing');
+      }
+    }
+    return estimateSentenceCues(ctx.plan.voice.text, voiceDuration);
   }
 }

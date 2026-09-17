@@ -35,3 +35,16 @@
 | [development.md](./development.md) | 本地启动说明 |
 
 业务模块在对应设计文档评审通过后再实现。
+
+UI/UX 蓝图（2026-09-16，**确认前禁止大规模改页面**）：
+
+| 文档 | 说明 |
+| --- | --- |
+| [ui-ux/product-redesign-spec.md](./ui-ux/product-redesign-spec.md) | 总纲与冻结边界 |
+| [ui-ux/information-architecture.md](./ui-ux/information-architecture.md) | 导航与 App Shell |
+| [ui-ux/page-flow-map.md](./ui-ux/page-flow-map.md) | 页面任务与 CTA |
+| [ui-ux/design-system-v2.md](./ui-ux/design-system-v2.md) | 视觉与 a11y 规范 |
+| [ui-ux/component-map-v2.md](./ui-ux/component-map-v2.md) | 组件复用 |
+| [ui-ux/status-language-map.md](./ui-ux/status-language-map.md) | 状态人话映射 |
+| [ui-ux/known-ux-issues.md](./ui-ux/known-ux-issues.md) | 问题总账与 limitations |
+| [ui-ux/implementation-waves.md](./ui-ux/implementation-waves.md) | Phase A–I |

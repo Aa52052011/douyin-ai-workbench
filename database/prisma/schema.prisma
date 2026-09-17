@@ -307,6 +307,7 @@ model User {
   publications  Publication[]
   enteredPublicationMetricSnapshots PublicationMetricSnapshot[]
   manualPublicationExports ManualPublicationExport[]
+  videoFinalAcceptances VideoFinalAcceptance[]
 
   @@map("users")
 }
@@ -361,6 +362,7 @@ model Tenant {
   cropExecutionAuthorizations CropExecutionAuthorization[]
   cropExecutionRuns      CropExecutionRun[]
   outputStrategySelections OutputStrategySelection[]
+  videoFinalAcceptances  VideoFinalAcceptance[]
 
   @@map("tenants")
 }
@@ -432,6 +434,7 @@ model Workspace {
   cropExecutionAuthorizations CropExecutionAuthorization[]
   cropExecutionRuns      CropExecutionRun[]
   outputStrategySelections OutputStrategySelection[]
+  videoFinalAcceptances  VideoFinalAcceptance[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, slug])
@@ -490,6 +493,7 @@ model Project {
   cropExecutionAuthorizations CropExecutionAuthorization[]
   cropExecutionRuns      CropExecutionRun[]
   outputStrategySelections OutputStrategySelection[]
+  videoFinalAcceptances  VideoFinalAcceptance[]
 
   @@unique([id, tenantId])
   @@index([tenantId, workspaceId])
@@ -556,6 +560,7 @@ model Script {
   project     Project      @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
   contentPlan ContentPlan? @relation(fields: [contentPlanId], references: [id], onDelete: Restrict)
   videos      Video[]
+  videoFinalAcceptances VideoFinalAcceptance[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, contentPlanId, topicId, version])
@@ -593,12 +598,46 @@ model Video {
   publications Publication[]
   usageEvents  UsageEvent[]
   costLedgers  CostLedger[]
+  finalAcceptances VideoFinalAcceptance[]
 
   @@unique([id, tenantId])
   @@index([tenantId, workspaceId, projectId])
   @@index([scriptId])
   @@index([tenantId, status])
   @@map("videos")
+}
+
+/// Product-pipeline Final Production Acceptance for a Video version. Append-only current flag.
+model VideoFinalAcceptance {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  scriptId             String?  @map("script_id") @db.Uuid
+  videoId              String   @map("video_id") @db.Uuid
+  acceptedArtifactId   String   @map("accepted_artifact_id") @db.Uuid
+  variant              String   @default("VERTICAL")
+  status               String   @default("ACCEPTED")
+  current              Boolean  @default(true)
+  acceptedAt           DateTime @map("accepted_at")
+  acceptedByUserId     String   @map("accepted_by_user_id") @db.Uuid
+  supersededAt         DateTime? @map("superseded_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  project  Project   @relation(fields: [projectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  script   Script?   @relation(fields: [scriptId], references: [id], onDelete: Restrict)
+  video    Video     @relation(fields: [videoId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  artifact Asset     @relation(fields: [acceptedArtifactId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  acceptedBy User    @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, videoId])
+  @@index([tenantId, projectId, scriptId, current])
+  @@index([tenantId, current])
+  @@map("video_final_acceptances")
 }
 
 /// 统一文件元数据。二进制在 StorageProvider，不进 Postgres。
@@ -650,6 +689,7 @@ model Asset {
   referenceContents ReferenceContent[]
   voiceSampleProfiles VoiceProfile[] @relation("VoiceProfileSample")
   digitalHumanSources DigitalHumanProfile[] @relation("DigitalHumanSource")
+  videoFinalAcceptances VideoFinalAcceptance[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, storageProvider, storageKey])

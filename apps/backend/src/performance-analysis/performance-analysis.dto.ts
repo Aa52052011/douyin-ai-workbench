@@ -14,4 +14,8 @@ export class ReviewRecommendationDto {
   @IsString()
   @IsIn(['APPROVE', 'REJECT', 'DEFER'])
   action!: 'APPROVE' | 'REJECT' | 'DEFER';
+
+  @IsOptional()
+  @IsString()
+  userNote?: string;
 }

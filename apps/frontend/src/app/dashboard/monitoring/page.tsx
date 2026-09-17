@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ContextualGuidanceV1 } from "../../../components/contextual-guidance-v1";
 import { EmptyState } from "../../../components/empty-state";
-import { PageHeader } from "../../../components/page-header";
+import { WorkflowPageHeaderV1 } from "../../../components/workflow-page-header-v1";
 import { ProductStatusBadge } from "../../../components/ui/badge";
 import { ProductErrorState } from "../../../components/ui/error-state";
-import { Table } from "../../../components/ui/feedback";
 import { useAuth } from "../../../lib/auth-context";
 import { listMonitoringPosts, type PublishedPostRecord } from "../../../lib/monitoring.api";
+import { displayMetricValue } from "../../../lib/performance.view";
 import { toProductError } from "../../../lib/ux/product-error";
 import {
   boundVideoLabel,
@@ -43,10 +43,11 @@ export default function MonitoringListPage() {
   }, [accessToken]);
 
   return (
-    <div className="px-3 py-6 md:px-4">
-      <PageHeader
+    <div className="max-w-6xl px-3 py-6 md:px-4">
+      <WorkflowPageHeaderV1
+        page="monitoring-list"
         title="发布与数据"
-        description="登记已发布作品、录入播放数据，有数据后再做 AI 复盘。不会自动抓取抖音，也没有自动发布。"
+        description="跨项目查看已登记作品的摘要。详情、录入和复盘仍按每条作品继续。不会自动抓取抖音，也没有自动发布。"
         breadcrumb={[
           { label: "工作台", href: "/dashboard" },
           { label: "发布与数据" },
@@ -69,70 +70,26 @@ export default function MonitoringListPage() {
         />
       ) : null}
       {items && items.length > 0 ? (
-        <>
-          <div className="grid gap-3 md:hidden">
-            {items.map((item) => (
-              <article key={item.id} className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-                <p className="font-medium">{monitoringTitle(item)}</p>
-                <p className="mt-1 text-neutral-600">{item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "未填写发布时间"}</p>
-                <p>{boundVideoLabel(Boolean(item.productionArtifactId))}</p>
-                <p>播放 {item.latestMetrics?.playCount ?? "—"} · 点赞 {item.latestMetrics?.likeCount ?? "—"}</p>
-                <p className="mt-2">
-                  <ProductStatusBadge status={item.monitoringStatus} />
-                  <span className="sr-only">{monitoringStatusLabel(item.monitoringStatus)}</span>
-                </p>
-                <Link className="mt-3 inline-flex rounded-md bg-neutral-950 px-3 py-1.5 text-white" href={`/dashboard/monitoring/${item.id}`}>
-                  {nextLabel(item)}
-                </Link>
-              </article>
-            ))}
-          </div>
-          <div className="hidden md:block" data-acf-monitoring-list-v5>
-            <Table wide>
-              <thead className="border-b bg-[var(--acf-surface-subtle)]">
-                <tr>
-                  <th className="px-3 py-2">作品</th>
-                  <th className="px-3 py-2">发布时间</th>
-                  <th className="px-3 py-2">播放</th>
-                  <th className="px-3 py-2">点赞</th>
-                  <th className="px-3 py-2">评论</th>
-                  <th className="px-3 py-2">分享</th>
-                  <th className="px-3 py-2">收藏</th>
-                  <th className="px-3 py-2">最后更新</th>
-                  <th className="px-3 py-2">状态</th>
-                  <th className="px-3 py-2">下一步</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">
-                      <Link className="underline" href={`/dashboard/monitoring/${item.id}`}>
-                        {monitoringTitle(item)}
-                      </Link>
-                      <p className="text-xs text-neutral-500">{boundVideoLabel(Boolean(item.productionArtifactId))}</p>
-                    </td>
-                    <td className="px-3 py-2">{item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "未填写"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.playCount ?? "—"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.likeCount ?? "—"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.commentCount ?? "—"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.shareCount ?? "—"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.collectCount ?? "—"}</td>
-                    <td className="px-3 py-2">{item.latestMetrics?.capturedAt ? new Date(item.latestMetrics.capturedAt).toLocaleString() : item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "—"}</td>
-                    <td className="px-3 py-2">
-                      <ProductStatusBadge status={item.monitoringStatus} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Link className="underline" href={`/dashboard/monitoring/${item.id}`}>
-                        {nextLabel(item)}
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
-        </>
+        <div className="grid gap-3 sm:grid-cols-2" data-acf-monitoring-list-v5>
+          {items.map((item) => (
+            <article key={item.id} className="rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4 text-sm">
+              <p className="font-medium">{monitoringTitle(item)}</p>
+              <p className="mt-1 text-[var(--acf-text-secondary)]">{item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "未填写登记时间"}</p>
+              <p>{boundVideoLabel(Boolean(item.videoId || item.productionArtifactId), item.title)}</p>
+              <p>
+                播放 {displayMetricValue(item.latestMetrics?.playCount ?? null)} · 点赞 {displayMetricValue(item.latestMetrics?.likeCount ?? null)}
+              </p>
+              <p className="mt-2">
+                <ProductStatusBadge status={item.monitoringStatus} />
+                <span className="sr-only">{monitoringStatusLabel(item.monitoringStatus)}</span>
+              </p>
+              <p className="mt-2">下一步：{nextLabel(item)}</p>
+              <Link className="mt-3 inline-flex rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-3 py-1.5 text-white" href={`/dashboard/monitoring/${item.id}`}>
+                {nextLabel(item)}
+              </Link>
+            </article>
+          ))}
+        </div>
       ) : null}
     </div>
   );

@@ -15,14 +15,14 @@ export function VideoSourceForm({
   collapsed?: boolean;
 }) {
   const body = (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <p className="mb-2 text-sm text-neutral-600">已带入当前脚本、选题和项目，无需再填行业或平台。</p>
       <label className="mb-1 block text-sm font-medium" htmlFor="video-script">
         脚本
       </label>
       <select
         id="video-script"
-        className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
+        className="w-full min-w-0 rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm"
         value={scriptId}
         disabled={pending}
         onChange={(event) => onChange(event.target.value)}

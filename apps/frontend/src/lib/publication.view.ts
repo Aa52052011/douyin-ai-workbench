@@ -6,6 +6,7 @@ import {
   type PublicationRecord,
   type PublicationView,
 } from "./publication.types";
+import { looksLikeTechnicalId } from "./ux/publication-monitoring-v5";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,6 +33,10 @@ export function parsePublicationRecord(value: unknown): PublicationRecord | null
     title: typeof value.title === "string" ? value.title : undefined,
     status,
     publishedAt: typeof value.publishedAt === "string" ? value.publishedAt : null,
+    registeredAt: typeof value.registeredAt === "string" ? value.registeredAt : null,
+    productionArtifactId: typeof value.productionArtifactId === "string" ? value.productionArtifactId : null,
+    sourceVideoTitle: typeof value.sourceVideoTitle === "string" ? value.sourceVideoTitle : null,
+    verificationStatus: typeof value.verificationStatus === "string" ? value.verificationStatus : null,
     externalPostId: typeof value.externalPostId === "string" ? value.externalPostId : null,
     externalUrl: typeof value.externalUrl === "string" ? value.externalUrl : null,
     errorMessage: typeof value.errorMessage === "string" ? value.errorMessage : null,
@@ -85,6 +90,16 @@ export function publicationView(record: PublicationRecord, video?: VideoRecord |
     externalPostId: record.externalPostId || "",
     failureMessage: record.status === "FAILED" ? safeFailureMessage(record.errorMessage) || "发布失败" : "",
   };
+}
+
+export function meaningfulLinkedVideoTitle(record: PublicationRecord, video?: VideoRecord | null): string | null {
+  const values = [video?.scriptTitle, record.sourceVideoTitle]
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+  const title = values.find(
+    (item) => item !== "来源视频" && item !== "关联成片" && !looksLikeTechnicalId(item),
+  );
+  return title || null;
 }
 
 export function parsedPublicationView(record: PublicationRecord, video?: VideoRecord | null): PublicationView | null {

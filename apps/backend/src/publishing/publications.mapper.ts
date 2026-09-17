@@ -23,8 +23,13 @@ export type PublicationPublic = {
   visibility: string;
   platformAccount: PlatformAccountPublicSummary | null;
   publishedAt: Date | null;
+  registeredAt: Date | null;
   externalPostId: string | null;
   externalUrl: string | null;
+  productionArtifactId: string | null;
+  sourceVideoTitle: string | null;
+  verificationStatus: string | null;
+  monitoringMode: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   retryClass: PublishingRetryClass | null;
@@ -46,6 +51,7 @@ export function toPublicPlatformAccount(account: PlatformAccount): PlatformAccou
 export function toPublicPublication(
   publication: Publication,
   account?: PlatformAccount | null,
+  extras?: { sourceVideoTitle?: string | null },
 ): PublicationPublic {
   return {
     id: publication.id,
@@ -60,8 +66,13 @@ export function toPublicPublication(
     visibility: publication.visibility,
     platformAccount: account ? toPublicPlatformAccount(account) : null,
     publishedAt: publication.publishedAt,
+    registeredAt: publication.registeredAt,
     externalPostId: publication.externalPostId,
     externalUrl: publication.externalUrl,
+    productionArtifactId: publication.productionArtifactId,
+    sourceVideoTitle: extras?.sourceVideoTitle ?? null,
+    verificationStatus: publication.verificationStatus,
+    monitoringMode: publication.monitoringMode,
     errorCode: publication.errorCode,
     errorMessage: publication.errorMessage,
     retryClass: readRetryClass(publication.providerResponseMetadata) ?? null,

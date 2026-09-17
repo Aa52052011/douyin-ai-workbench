@@ -21,6 +21,8 @@ export type ProductionScene = {
   narration: string;
   subtitle: string;
   visualSuggestion: string;
+  visualIntent: string;
+  requiredEvidence: string;
   visualPrompt: string;
   visualSourceType: VisualSourceType;
   visualNegativePrompt?: string;
@@ -135,6 +137,12 @@ export type JobPipelineOutput = {
   materialResolution?: import('./material-resolve.types.js').MaterialResolutionSnapshot;
   editingTimeline?: import('./editing-timeline.js').EditingTimelineV1;
   qualityGate?: import('../quality/quality.types.js').QualityCheckpoint;
+  landscape?: {
+    assetId: string;
+    width: number;
+    height: number;
+    duration: number;
+  };
   final?: {
     assetId: string;
     duration: number;

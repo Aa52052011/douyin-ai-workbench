@@ -4,10 +4,13 @@ import { buildVoiceText } from './production-plan.builder.js';
 import { REAL_VISUAL_PIPELINE_SCRIPT } from './real-visual-pipeline.fixture.js';
 import {
   buildSubtitleCues,
+  cuesFromSpeechMarks,
   normalizeSubtitleSemantics,
   parseSrt,
   renderSrt,
   segmentCanonicalNarration,
+  splitNaturalSpeechPhrases,
+  subtitleCueStats,
   SUBTITLE_TIME_EPSILON,
 } from './srt.js';
 
@@ -144,13 +147,63 @@ describe('SRT', () => {
     expectSemanticMatch(canonical, cues);
   });
 
-  it('still matches mock ScriptOutput narration rather than section.subtitle cards', () => {
-    const canonical = buildVoiceText(MOCK_SCRIPT_OUTPUT);
-    const cues = buildSubtitleCues(canonical, 30);
-    expectSemanticMatch(canonical, cues);
-    expect(cues.some((item) => item.text.includes('第1步，先改一件事'))).toBe(false);
-    expect(normalizeSubtitleSemantics(cues.map((item) => item.text).join(''))).toContain(
-      normalizeSubtitleSemantics(MOCK_SCRIPT_OUTPUT.sections[0]?.narration ?? ''),
+  it('keeps provider speech marks instead of splitting their time by character count', () => {
+    const cues = cuesFromSpeechMarks(
+      [
+        { text: '第一句完整旁白。', start: 0, end: 1.2 },
+        { text: '第二句完整旁白。', start: 1.2, end: 2.4 },
+      ],
+      2.4,
     );
+    expect(cues).toHaveLength(2);
+    expect(cues[0]?.end).toBe(1.2);
+    expect(cues[1]?.end).toBe(2.4);
+    expect(subtitleCueStats(cues, 2.4).overlapCount).toBe(0);
+  });
+
+  it('splits a long TTS sentence into natural speech phrases inside the sentence window', () => {
+    const source =
+      '智能体先提醒顾客真正关心的理由：吃什么、适合谁、什么时候来，以及为什么选这家。';
+    const phrases = splitNaturalSpeechPhrases(source);
+    expect(phrases.some((item) => item.includes('吃什么'))).toBe(true);
+    expect(phrases.some((item) => item.includes('适合谁'))).toBe(true);
+    expect(phrases.some((item) => item.includes('吃什么、适合谁'))).toBe(false);
+    expect(phrases.some((item) => item.includes('什么时候来'))).toBe(true);
+    expect(phrases.some((item) => item.includes('以及为什么选这家'))).toBe(true);
+    expect(phrases.some((item) => item.replace(/[：:。！？；;…，,]+$/g, '') === source.replace(/[：:。！？；;…，,]+$/g, ''))).toBe(false);
+    const cues = cuesFromSpeechMarks([{ text: source, start: 0, end: 8 }], 8);
+    expect(cues.length).toBeGreaterThan(3);
+    expect(cues[0]?.start).toBe(0);
+    expect(cues.at(-1)?.end).toBe(8);
+    expect(cues.every((item) => item.start >= 0 && item.end <= 8)).toBe(true);
+    expect(cues.some((item) => item.text.replace(/\n/g, '') === source)).toBe(false);
+    expect(subtitleCueStats(cues, 8).overlapCount).toBe(0);
+    expect(subtitleCueStats(cues, 8).maxSimultaneousActiveCues).toBe(1);
+    expect(subtitleCueStats(cues, 8).multiPhraseCueCount).toBe(0);
+    expect(subtitleCueStats(cues, 8).maxCuePhraseCount).toBe(1);
+  });
+
+  it('keeps one spoken phrase per cue for enumeration and 和-connected phrases', () => {
+    const caseA = splitNaturalSpeechPhrases('先输入门店类型、招牌菜、消费场景、目标顾客');
+    expect(caseA.some((item) => item.includes('门店类型'))).toBe(true);
+    expect(caseA.some((item) => item.includes('招牌菜'))).toBe(true);
+    expect(caseA.some((item) => item.includes('消费场景'))).toBe(true);
+    expect(caseA.some((item) => item.includes('目标顾客'))).toBe(true);
+    expect(caseA.length).toBeGreaterThanOrEqual(4);
+    expect(caseA.some((item) => item.includes('招牌菜') && item.includes('消费场景'))).toBe(false);
+    const caseB = splitNaturalSpeechPhrases('家庭聚餐搭配、真实用餐场景和顾客常问问题').map((item) =>
+      item.replace(/[，,、。！？；;]+$/g, ''),
+    );
+    expect(caseB).toEqual(['家庭聚餐搭配', '真实用餐场景', '顾客常问问题']);
+    const cues = cuesFromSpeechMarks(
+      [{ text: '比如招牌菜制作、午餐怎么点、家庭聚餐搭配、真实用餐场景和顾客常问问题。', start: 0, end: 9 }],
+      9,
+    );
+    expect(cues.some((item) => item.text.includes('家庭聚餐搭配') && item.text.includes('真实用餐场景'))).toBe(false);
+    const stats = subtitleCueStats(cues, 9);
+    expect(stats.maxSimultaneousActiveCues).toBe(1);
+    expect(stats.overlapCount).toBe(0);
+    expect(stats.multiPhraseCueCount).toBe(0);
+    expect(stats.maxCuePhraseCount).toBe(1);
   });
 });

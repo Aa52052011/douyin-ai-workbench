@@ -1,7 +1,8 @@
 import type { VideoRecord } from "./video.types";
 
 export const VIDEO_POLL_INTERVAL_MS = 2000;
-export const VIDEO_POLL_MAX_TICKS = 90;
+/** Real visual/TTS/FFmpeg pipelines exceed the previous ~3 minute UI wait. */
+export const VIDEO_POLL_MAX_TICKS = 600;
 
 export function isVideoPollTerminal(video: VideoRecord): boolean {
   if (video.status === "COMPLETED" || video.status === "FAILED") {

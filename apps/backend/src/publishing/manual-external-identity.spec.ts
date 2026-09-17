@@ -9,7 +9,9 @@ import {
 
 describe('manual external identity', () => {
   it('accepts https URLs without fetching', () => {
-    expect(parseManualExternalUrl('https://www.douyin.com/video/123')).toBe('https://www.douyin.com/video/123');
+    expect(parseManualExternalUrl('https://v.douyin.com/QwZ6GP7OFUU/')).toBe(
+      'https://v.douyin.com/QwZ6GP7OFUU/',
+    );
     expect(parseManualExternalUrl('http://example.com/p/1')).toBe('http://example.com/p/1');
   });
 

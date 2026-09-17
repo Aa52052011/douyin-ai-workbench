@@ -48,6 +48,8 @@ function scene(sequence: number): ProductionScene {
     narration: `旁白${sequence}`,
     subtitle: `字幕${sequence}`,
     visualSuggestion: `画面${sequence}`,
+    visualIntent: `旁白${sequence}`,
+    requiredEvidence: `画面${sequence}`,
     visualPrompt: `竖屏静帧 ${sequence}`,
     visualNegativePrompt: '字幕, 水印',
     visualSourceType: 'COLOR_BACKGROUND',
@@ -190,7 +192,7 @@ describe('VisualGenerationStage', () => {
       sceneId: ctx.plan.scenes[0]?.sceneId,
       generationVersion: GEN,
       provider: 'color-background',
-      promptVersion: 'v1',
+      promptVersion: 'v2',
     });
     expect(created?.metadata).not.toHaveProperty('prompt');
     expect(JSON.stringify(created?.metadata)).not.toContain('Authorization');

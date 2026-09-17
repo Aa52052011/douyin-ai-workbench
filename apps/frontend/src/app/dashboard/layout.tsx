@@ -17,8 +17,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!ready || !session) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-neutral-50">
-        <p className="text-sm text-neutral-600">加载中…</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--acf-page)]">
+        <p className="text-sm text-[var(--acf-text-secondary)]">加载中…</p>
       </main>
     );
   }

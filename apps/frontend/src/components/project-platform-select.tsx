@@ -11,7 +11,7 @@ import {
 } from "../lib/project-platform";
 
 const selectClass =
-  "w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm sm:w-auto sm:min-w-[8rem]";
+  "acf-field w-full min-w-0 rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm sm:w-auto sm:min-w-[8rem]";
 
 export function ProjectPlatformSelect({
   id = "project-platform",

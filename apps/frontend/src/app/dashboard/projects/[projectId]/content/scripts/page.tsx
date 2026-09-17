@@ -2,29 +2,33 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "../../../../../../components/empty-state";
-import { PageHeader } from "../../../../../../components/page-header";
-import { ProductionContextHeaderV3, WorkflowFooterV3 } from "../../../../../../components/production-context-header";
-import { AITaskState } from "../../../../../../components/ui/ai-task-state";
-import { HumanReviewBar } from "../../../../../../components/ui/human-review-bar";
-import { ProductErrorState } from "../../../../../../components/ui/error-state";
-import { ScriptDetail } from "../../../../../../components/script-detail";
-import { ScriptEditor } from "../../../../../../components/script-editor";
+import { WorkflowPageHeaderV1 } from "../../../../../../components/workflow-page-header-v1";
+import { AsyncTaskProgressV1 } from "../../../../../../components/async-task-progress-v1";
+import { InlineActionErrorV1 } from "../../../../../../components/inline-action-error-v1";
+import { NextActionBarV1 } from "../../../../../../components/next-action-bar-v1";
+import { TopicDetailDrawerV1 } from "../../../../../../components/content-planning-topics";
+import { ScriptEditor, ScriptEditorV2 } from "../../../../../../components/script-editor";
 import { ScriptHistory } from "../../../../../../components/script-history";
 import { ScriptProductionQueue } from "../../../../../../components/script-production-queue";
+import { ScriptConfirmedActions, ScriptReviewPanelV2 } from "../../../../../../components/script-review-panel-v2";
 import { ScriptSourceForm } from "../../../../../../components/script-source-form";
-import { WorkspacePageShell } from "../../../../../../components/workspace-page-shell";
+import { Button } from "../../../../../../components/ui/button";
+import { Dialog } from "../../../../../../components/ui/dialog";
+import { HumanReviewBar } from "../../../../../../components/ui/human-review-bar";
+import { Skeleton } from "../../../../../../components/ui/feedback";
+import { useToast } from "../../../../../../components/ui/toast";
 import { useAuth } from "../../../../../../lib/auth-context";
 import { listContentPlans } from "../../../../../../lib/content-planning.api";
+import { scriptHref } from "../../../../../../lib/content-planning.form";
 import {
   buildTopicProductionItems,
   findNextProductionAction,
   getCurrentProductionTopic,
-  summarizeProductionProgress,
 } from "../../../../../../lib/content-planning.production";
-import { planStatusLabel } from "../../../../../../lib/content-planning.view";
-import type { ContentPlanRecord, ContentTopicRecord } from "../../../../../../lib/content-planning.types";
+import type { ContentPlanRecord, ContentTopicRecord, TopicCardView } from "../../../../../../lib/content-planning.types";
+import { adjacentProjectNav } from "../../../../../../lib/project-nav";
 import { useProjectWorkspace } from "../../../../../../lib/project-workspace-context";
 import { listPublications } from "../../../../../../lib/publication.api";
 import type { PublicationRecord } from "../../../../../../lib/publication.types";
@@ -47,7 +51,6 @@ import {
   hasUnconfirmedDraftAlongsideConfirmed,
   hintDurationFromTopic,
   humanizeScriptError,
-  latestScriptForTopic,
   resolveScriptWorkspaceSelection,
   scriptsForTopic,
   topicsForPlan,
@@ -57,21 +60,23 @@ import type { ScriptFormState, ScriptPayloadRecord, ScriptRecord } from "../../.
 import {
   parseScriptPayload,
   parsedScriptView,
-  parseTopicSnapshot,
+  formatScriptTime,
   scriptHistoryViews,
-  scriptStatusLabel,
-  topicSourceView,
 } from "../../../../../../lib/script.view";
+import { selectWorkspaceScript, scriptBelongsToPlan, scriptWorkspaceStatusLabel } from "../../../../../../lib/script.workspace";
 import { listVideos } from "../../../../../../lib/video.api";
 import type { VideoRecord } from "../../../../../../lib/video.types";
 
 function ContentScriptsPageInner() {
   const { projectId } = useParams<{ projectId: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const queryPlanId = searchParams.get("contentPlanId");
   const queryTopicId = searchParams.get("topicId");
   const { project } = useProjectWorkspace();
   const { accessToken } = useAuth();
+  const toast = useToast();
+  const flow = adjacentProjectNav(`/dashboard/projects/${projectId}/content/scripts`, projectId);
   const [plans, setPlans] = useState<ContentPlanRecord[]>([]);
   const [scripts, setScripts] = useState<ScriptRecord[]>([]);
   const [videos, setVideos] = useState<VideoRecord[]>([]);
@@ -92,9 +97,13 @@ function ContentScriptsPageInner() {
   const [userEditedDraft, setUserEditedDraft] = useState(false);
   const [justConfirmed, setJustConfirmed] = useState(false);
   const [isCompactQueue, setIsCompactQueue] = useState(false);
+  const [topicDetailOpen, setTopicDetailOpen] = useState(false);
+  const [historyOpenSignal, setHistoryOpenSignal] = useState(0);
+  const [pendingSwitchTopicId, setPendingSwitchTopicId] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
+    const mq = window.matchMedia("(max-width: 1279px)");
     const apply = () => setIsCompactQueue(mq.matches);
     apply();
     mq.addEventListener("change", apply);
@@ -116,7 +125,7 @@ function ContentScriptsPageInner() {
         return;
       }
       if (planResult.status === "rejected") {
-        setLoadError("无法加载脚本所需信息，请刷新重试。");
+        setLoadError("无法加载本期内容");
         setLoading(false);
         return;
       }
@@ -150,10 +159,11 @@ function ContentScriptsPageInner() {
       setEditing(false);
       setDraft(null);
       setJustConfirmed(false);
+      setUserEditedDraft(false);
       if (scriptResult.status === "fulfilled") {
         setScriptError(null);
       } else {
-        setScriptError("无法加载脚本。");
+        setScriptError("无法加载这条脚本");
       }
       setLoadError(null);
       setLoading(false);
@@ -177,45 +187,57 @@ function ContentScriptsPageInner() {
       })
     : [];
 
-  const progress = summarizeProductionProgress(productionItems);
   const currentProductionTopic = getCurrentProductionTopic(productionItems);
   const nextAction = findNextProductionAction(productionItems);
   const topicScripts =
     form.contentPlanId && form.topicId ? scriptsForTopic(scripts, form.contentPlanId, form.topicId) : [];
-  const current = resolveCurrentScript(scripts, form, selectedScriptId);
-  const currentView = current ? parsedScriptView(current) : null;
-  const currentPayload = current ? parseScriptPayload(current.payload) : null;
-  const source = topicSourceView(selectedTopic);
+  const current = selectWorkspaceScript(scripts, form.contentPlanId, form.topicId, selectedScriptId);
+  const isolatedCurrent = scriptBelongsToPlan(current, form.contentPlanId) ? current : null;
+  const currentView = isolatedCurrent ? parsedScriptView(isolatedCurrent) : null;
+  const currentPayload = isolatedCurrent ? parseScriptPayload(isolatedCurrent.payload) : null;
   const draftBesideConfirmed =
     form.contentPlanId && form.topicId
       ? hasUnconfirmedDraftAlongsideConfirmed(scripts, form.contentPlanId, form.topicId)
       : false;
   const focusItem = productionItems.find((item) => item.topicId === form.topicId) ?? null;
-  const allScriptsDone = Boolean(selectedPlan && productionItems.length > 0 && !currentProductionTopic);
+  const hasVideo = Boolean(
+    isolatedCurrent && videos.some((item) => item.scriptId === isolatedCurrent.id),
+  );
+  const workspaceStatus = scriptWorkspaceStatusLabel({
+    script: isolatedCurrent,
+    generating: pending && !isolatedCurrent,
+    failed: Boolean(actionError) && !isolatedCurrent,
+    hasVideo,
+  });
+  const topicCard = selectedTopic ? topicToCard(selectedTopic) : null;
+  const generating = pending && !isolatedCurrent;
+
+  function navigateTopic(topicId: string) {
+    if (!form.contentPlanId) return;
+    setPendingSwitchTopicId(null);
+    router.replace(scriptHref(projectId, form.contentPlanId, topicId));
+  }
+
+  function requestSelectTopic(topicId: string) {
+    if (topicId === form.topicId) return;
+    if (userEditedDraft && editing) {
+      setPendingSwitchTopicId(topicId);
+      return;
+    }
+    navigateTopic(topicId);
+  }
 
   function changeForm(next: ScriptFormState) {
     const plan = usablePlans.find((item) => item.id === next.contentPlanId) ?? null;
     const topic = topicsForPlan(plan).find((item) => item.id === next.topicId);
     const topicChanged = next.topicId !== form.topicId || next.contentPlanId !== form.contentPlanId;
+    if (topicChanged && next.contentPlanId && next.topicId) {
+      router.replace(scriptHref(projectId, next.contentPlanId, next.topicId));
+      return;
+    }
     setForm({
       ...next,
       targetDuration: topicChanged ? hintDurationFromTopic(topic?.estimatedDuration) : next.targetDuration,
-    });
-    if (topicChanged) {
-      setSelectedScriptId("");
-      setEditing(false);
-      setDraft(null);
-      setArchiveAsk(false);
-      setJustConfirmed(false);
-    }
-  }
-
-  function selectQueueTopic(topicId: string) {
-    const topic = topics.find((item) => item.id === topicId);
-    changeForm({
-      ...form,
-      topicId,
-      targetDuration: hintDurationFromTopic(topic?.estimatedDuration),
     });
   }
 
@@ -249,17 +271,22 @@ function ContentScriptsPageInner() {
   }
 
   async function saveDraft() {
-    if (!accessToken || !current || !draft || pending || !canEditScript(current.status)) {
+    if (!accessToken || !isolatedCurrent || !draft || pending || !canEditScript(isolatedCurrent.status)) {
       return;
     }
     setPending(true);
     setActionError(null);
+    setSaveNotice("正在保存…");
     try {
-      const updated = await updateScriptDraft(accessToken, current.id, draft);
+      const updated = await updateScriptDraft(accessToken, isolatedCurrent.id, draft);
       await refreshScripts(updated.id);
       setEditing(false);
       setDraft(null);
+      setUserEditedDraft(false);
+      setSaveNotice("已保存");
+      toast("已保存");
     } catch (error) {
+      setSaveNotice(null);
       setActionError(humanizeScriptError(error, "save"));
     } finally {
       setPending(false);
@@ -267,15 +294,16 @@ function ContentScriptsPageInner() {
   }
 
   async function confirm() {
-    if (!accessToken || !current || pending || !canConfirmScript(current.status)) {
+    if (!accessToken || !isolatedCurrent || pending || !canConfirmScript(isolatedCurrent.status)) {
       return;
     }
     setPending(true);
     setActionError(null);
     try {
-      const updated = await confirmScript(accessToken, current.id);
+      const updated = await confirmScript(accessToken, isolatedCurrent.id);
       await refreshScripts(updated.id);
       setJustConfirmed(true);
+      setEditing(false);
     } catch (error) {
       setActionError(humanizeScriptError(error, "confirm"));
     } finally {
@@ -284,13 +312,13 @@ function ContentScriptsPageInner() {
   }
 
   async function archive() {
-    if (!accessToken || !current || pending || !canArchiveScript(current.status)) {
+    if (!accessToken || !isolatedCurrent || pending || !canArchiveScript(isolatedCurrent.status)) {
       return;
     }
     setPending(true);
     setActionError(null);
     try {
-      const updated = await archiveScript(accessToken, current.id);
+      const updated = await archiveScript(accessToken, isolatedCurrent.id);
       await refreshScripts(updated.id);
       setArchiveAsk(false);
     } catch (error) {
@@ -313,383 +341,390 @@ function ContentScriptsPageInner() {
       return;
     }
     setJustConfirmed(false);
-    selectQueueTopic(next.topicId);
+    navigateTopic(next.topicId);
   }
 
-  const actions = current ? (
-    <aside className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-      <p className="text-neutral-600">重新生成只会生成这一条的新脚本版本，不会改变整套周计划。</p>
-      {canEditScript(current.status) && currentPayload ? (
-        editing ? (
-          <button
-            className="w-full rounded-md bg-neutral-950 px-4 py-2 text-white disabled:opacity-50"
-            type="button"
-            disabled={pending}
-            onClick={() => void saveDraft()}
-          >
-            保存修改
-          </button>
-        ) : (
-          <button
-            className="w-full rounded-md border px-4 py-2 disabled:opacity-50"
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              setDraft(currentPayload);
-              setEditing(true);
-              setUserEditedDraft(false);
-            }}
-          >
-            编辑草稿
-          </button>
-        )
-      ) : null}
-      {canConfirmScript(current.status) ? (
-        <HumanReviewBar
-          context="这条视频脚本"
-          confirmLabel="确认脚本"
-          onConfirm={() => void confirm()}
-          onRequestChanges={() => {
-            if (currentPayload) {
-              setDraft(currentPayload);
-              setEditing(true);
-            }
-          }}
-          onDefer={() => undefined}
-        />
-      ) : null}
-      {justConfirmed && canGenerateVideo(current.status) ? (
-        <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-          <p className="font-medium text-neutral-900">✓ 第 {focusItem?.dayIndex ?? "N"} 条脚本已确认</p>
-          <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
-            开始制作视频
-          </Link>
-          {currentProductionTopic ? (
-            <button className="w-full rounded-md border px-4 py-2" type="button" onClick={goNextScriptTopic}>
-              继续制作下一条脚本
-            </button>
-          ) : (
-            <p className="text-xs text-neutral-600">本期脚本已全部完成。</p>
-          )}
-        </div>
-      ) : null}
-      {!justConfirmed && canGenerateVideo(current.status) ? (
-        <div className="space-y-2">
-          <p className="text-neutral-700">脚本已确认，可以进入视频制作。</p>
-          <Link className="block rounded-md bg-neutral-950 px-4 py-2 text-center text-white" href={videoHref(projectId, current.id)}>
-            开始制作视频
-          </Link>
-        </div>
-      ) : null}
-      {canGenerateFromForm(form) ? (
-        <button
-          className="w-full rounded-md border px-4 py-2 disabled:opacity-50"
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            if (userEditedDraft || editing) {
-              setRegenAsk(true);
-              return;
-            }
-            void generate();
-          }}
-        >
-          重新生成脚本
-        </button>
-      ) : null}
-      {canArchiveScript(current.status) ? (
-        <details>
-          <summary className="cursor-pointer text-neutral-600">更多操作</summary>
-          <button
-            className="mt-2 w-full rounded-md border px-4 py-2 disabled:opacity-50"
-            type="button"
-            disabled={pending}
-            onClick={() => setArchiveAsk(true)}
-          >
-            归档脚本
-          </button>
-        </details>
-      ) : null}
-      {regenAsk ? (
-        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-          <p>重新生成会得到新版本，不会静默覆盖你改过的内容。确定继续？</p>
-          <div className="mt-2 flex gap-2">
-            <button
-              className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
-              type="button"
-              onClick={() => {
-                setRegenAsk(false);
-                void generate();
-              }}
-            >
-              生成新版本
-            </button>
-            <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setRegenAsk(false)}>
-              取消
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {archiveAsk ? (
-        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
-          <p>归档后，这份脚本不再用于视频制作。</p>
-          <div className="mt-2 flex gap-2">
-            <button
-              className="rounded-md bg-neutral-950 px-3 py-1.5 text-white"
-              type="button"
-              disabled={pending}
-              onClick={() => void archive()}
-            >
-              确认归档
-            </button>
-            <button className="rounded-md border px-3 py-1.5" type="button" onClick={() => setArchiveAsk(false)}>
-              取消
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </aside>
+  const queue = selectedPlan ? (
+    <ScriptProductionQueue
+      items={productionItems}
+      currentTopicId={currentProductionTopic?.topicId}
+      selectedTopicId={form.topicId}
+      scriptReadyCount={0}
+      onSelect={requestSelectTopic}
+      compact={isCompactQueue}
+      projectId={projectId}
+      planId={selectedPlan.id}
+      scripts={scripts}
+      videos={videos}
+      generatingTopicId={generating ? form.topicId : null}
+    />
   ) : null;
 
   return (
-    <div>
-      <PageHeader
-        title="脚本"
-        description="阅读、修改并确认这条视频脚本。选题、定位和风格已带入。"
+    <div data-acf-script-workspace>
+      <WorkflowPageHeaderV1
+        page="script"
+        projectId={projectId}
+        title="选题与脚本"
+        description="为本周选题生成并确认脚本。"
+        status={
+          selectedPlan ? (
+            <p className="acf-caption">
+              第{selectedPlan.version}版内容计划 · {topics.length}条内容
+            </p>
+          ) : null
+        }
         breadcrumb={[
           { label: "项目", href: "/dashboard/projects" },
           { label: project.name, href: `/dashboard/projects/${projectId}` },
-          { label: "脚本" },
+          { label: "选题与脚本" },
         ]}
       />
-      <ProductionContextHeaderV3 projectName={project.name} stageId="script" completed={["positioning", "planning"]} />
 
       {loading ? (
-        <p className="text-sm text-neutral-600" aria-live="polite">
-          正在加载脚本…
-        </p>
+        <div className="grid gap-4 xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]" aria-busy="true">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
       ) : null}
 
       {!loading && loadError ? (
-        <p className="text-sm text-red-600" role="alert">
-          {loadError}
-        </p>
-      ) : null}
-
-      {!loading && !loadError && scriptError ? (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {scriptError}
-        </p>
+        <InlineActionErrorV1 message={loadError} onRetry={() => window.location.reload()} />
       ) : null}
 
       {!loading && !loadError && usablePlans.length === 0 ? (
-        <WorkspacePageShell>
-          <EmptyState
-            title="还没有可用的内容计划"
-            description="先确认一份内容计划，再从选题生成脚本。"
-            primaryAction={{ label: "去内容计划", href: contentPlansHref(projectId) }}
-          />
-        </WorkspacePageShell>
+        <EmptyState
+          title="还不能制作脚本"
+          description="先确认本期内容计划。"
+          primaryAction={{ label: "返回内容计划", href: contentPlansHref(projectId) }}
+        />
       ) : null}
 
       {!loading && !loadError && usablePlans.length > 0 ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {queryWarning ? (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-[var(--acf-danger)]" role="alert">
               {queryWarning}
             </p>
           ) : null}
           {viewingHistoricalPlan ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            <p className="rounded-[var(--acf-radius-sm)] border border-[var(--acf-warning)] bg-[var(--acf-warning-soft)] px-3 py-2 text-sm">
               你正在查看历史计划。当前生产仍以最新已确认计划为准。
             </p>
           ) : null}
 
-          {selectedPlan ? (
-            <ScriptProductionQueue
-              items={productionItems}
-              currentTopicId={currentProductionTopic?.topicId}
-              selectedTopicId={form.topicId}
-              scriptReadyCount={progress.scriptReadyCount}
-              onSelect={selectQueueTopic}
-              compact={isCompactQueue}
+          {selectedPlan && topics.length === 0 ? (
+            <EmptyState
+              title="本期计划没有可制作选题。"
+              description="返回内容计划检查这一期规划。"
+              primaryAction={{ label: "返回内容计划", href: contentPlansHref(projectId) }}
             />
           ) : null}
 
-          <WorkspacePageShell sidebar={actions}>
-            <div className="space-y-6">
-              <ScriptSourceForm
-                form={form}
-                plans={usablePlans}
-                selectedPlan={selectedPlan}
-                topics={topics}
-                pending={pending}
-                onChange={changeForm}
-                collapsedByDefault
-                contextLine={
-                  selectedTopic
-                    ? `已带入选题「${selectedTopic.title}」${selectedTopic.targetAudience ? `、目标用户「${selectedTopic.targetAudience}」` : ""}。不需要再填行业、平台或风格。`
-                    : "已根据内容计划带入选题。不需要再填行业或平台。"
-                }
-              />
+          <div className="xl:grid xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)] xl:items-start xl:gap-8">
+            {queue ? (
+              <aside className="mb-4 bg-[var(--acf-surface-muted)] xl:sticky xl:top-4 xl:mb-0">{queue}</aside>
+            ) : null}
 
-              {allScriptsDone && !form.topicId ? (
-                <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
-                  <h2 className="font-medium">本期脚本已全部完成</h2>
-                  <p className="mt-1 text-neutral-600">
-                    {nextAction.kind === "VIDEO"
-                      ? "可以继续制作视频，或点队列查看任意一天的脚本。"
-                      : nextAction.kind === "PUBLISH"
-                        ? "视频已齐，可去发布。"
-                        : "本期内容已全部发布。"}
-                  </p>
-                  {nextAction.kind === "VIDEO" && nextAction.scriptId ? (
-                    <Link
-                      className="mt-3 inline-block rounded-md bg-neutral-950 px-4 py-2 text-white"
-                      href={videoHref(projectId, nextAction.scriptId)}
-                    >
-                      继续制作视频
-                    </Link>
+            <div className="min-w-0 bg-[var(--acf-surface)]">
+              {selectedTopic && focusItem ? (
+                <section className="space-y-4" data-acf-script-current-workspace>
+                  <header className="space-y-1">
+                    <p className="acf-caption">第 {focusItem.dayIndex} 条</p>
+                    <h2 className="acf-section-title">{focusItem.title}</h2>
+                    <p className="text-sm">{workspaceStatus}</p>
+                    <p className="acf-caption">
+                      {[selectedTopic.format || selectedTopic.contentPillar, selectedTopic.targetAudience]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    <button className="text-sm text-[var(--acf-text-secondary)] underline" type="button" onClick={() => setTopicDetailOpen(true)}>
+                      查看选题详情
+                    </button>
+                    {draftBesideConfirmed ? (
+                      <p className="acf-caption">有一份新的脚本版本等待确认。正式生产仍以已确认脚本为准，直到你确认新版本。</p>
+                    ) : null}
+                  </header>
+
+                  {canGenerateFromForm(form) && !isolatedCurrent && !generating ? (
+                    <div>
+                      <p className="text-sm">这条内容还没有脚本</p>
+                      <p className="acf-caption mt-1">AI 会根据已确认的选题生成一份可编辑脚本。</p>
+                      <Button className="mt-3" type="button" disabled={pending} onClick={() => void generate()}>
+                        生成脚本
+                      </Button>
+                      <span className="sr-only">生成这条脚本</span>
+                    </div>
                   ) : null}
                 </section>
               ) : null}
 
-              {selectedPlan && selectedTopic && focusItem ? (
-                <section className="rounded-xl border border-neutral-900 bg-white p-4 text-sm">
-                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">当前制作</p>
-                  <h2 className="mt-1 text-base font-medium text-neutral-950">
-                    {focusItem.sequenceLabel} · {focusItem.title}
-                  </h2>
-                  <p className="mt-1 text-neutral-600">{focusItem.statusLabel}</p>
-                  <p className="mt-2 text-xs text-neutral-500">
-                    内容计划：第 {selectedPlan.version} 版 · {planStatusLabel(selectedPlan.status)} · 本周第{" "}
-                    {focusItem.topicIndex + 1}/{productionItems.length} 条
-                  </p>
-                  <TopicSummary topic={selectedTopic} focus={focusItem} />
-                  {draftBesideConfirmed ? (
-                    <p className="mt-3 text-xs text-amber-900">有一份未确认的新版本；正式生产仍以已确认脚本为准。</p>
-                  ) : null}
-                </section>
+              <div className="mt-4 space-y-4">
+
+              {scriptError ? <InlineActionErrorV1 message={scriptError} onRetry={() => void refreshScripts()} /> : null}
+
+              <details className="bg-[var(--acf-surface-muted)] text-sm">
+                <summary className="cursor-pointer">生成设置</summary>
+                <div className="mt-3">
+                  <ScriptSourceForm
+                    form={form}
+                    plans={usablePlans}
+                    selectedPlan={selectedPlan}
+                    topics={topics}
+                    pending={pending}
+                    onChange={changeForm}
+                    collapsedByDefault
+                    contextLine={
+                      selectedTopic
+                        ? `已带入选题「${selectedTopic.title}」${selectedTopic.targetAudience ? `、目标用户「${selectedTopic.targetAudience}」` : ""}。不需要再填行业、平台或风格。`
+                        : "已根据内容计划带入选题。不需要再填行业或平台。"
+                    }
+                  />
+                </div>
+              </details>
+
+              {generating ? (
+                <AsyncTaskProgressV1
+                  status="RUNNING"
+                  label="AI 正在生成脚本"
+                  stages={[{ id: "script", label: "正在生成脚本", state: "current" }]}
+                  canLeave
+                />
               ) : null}
 
-              {pending ? <AITaskState state="RUNNING" stages={["正在生成脚本"]} /> : null}
               {actionError ? (
-                <ProductErrorState title="脚本没有完成" humanMessage={actionError} recoveryAction="稍后重试" />
-              ) : null}
-
-              {canGenerateFromForm(form) && !current ? (
-                <button
-                  className="sticky bottom-3 z-10 rounded-md bg-neutral-950 px-4 py-2 text-sm text-white disabled:opacity-50 md:static"
-                  type="button"
-                  disabled={pending}
-                  onClick={() => void generate()}
-                >
-                  生成这条脚本
-                </button>
-              ) : null}
-
-              {form.topicId && !current && !pending ? (
-                <p className="text-sm text-neutral-600">还没有这个选题的脚本，点击生成开始。</p>
-              ) : null}
-
-              {current && !currentView ? <p className="text-sm text-neutral-600">该版本无法读取</p> : null}
-
-              {current && currentView && editing && draft ? (
-                <ScriptEditor
-                  draft={draft}
-                  pending={pending}
-                  onChange={(next) => {
-                    setDraft(next);
-                    setUserEditedDraft(true);
-                  }}
+                <InlineActionErrorV1
+                  message={actionError.includes("失败") ? actionError : "脚本生成失败，请重试。"}
+                  onRetry={() => void generate()}
                 />
               ) : null}
 
-              {current && currentView && !editing ? (
-                <ScriptDetail
-                  view={currentView}
-                  version={current.version}
-                  statusLabel={scriptStatusLabel(current.status)}
-                  source={parseTopicSnapshot(current.topicSnapshot) ?? source}
-                />
+              {isolatedCurrent && !currentView ? <p className="text-sm">无法加载这条脚本</p> : null}
+
+              {isolatedCurrent && currentView && editing && draft ? (
+                <>
+                  <ScriptEditor
+                    draft={draft}
+                    pending={pending}
+                    onChange={(next) => {
+                      setDraft(next);
+                      setUserEditedDraft(true);
+                    }}
+                  />
+                  <Button type="button" disabled={pending} onClick={() => void saveDraft()}>
+                    {pending && saveNotice === "正在保存…" ? "正在保存…" : "保存修改"}
+                  </Button>
+                  {saveNotice === "已保存" ? <p className="acf-caption">已保存</p> : null}
+                </>
               ) : null}
+
+              {isolatedCurrent && currentView && !editing ? <ScriptEditorV2 view={currentView} readOnly /> : null}
+
+              {isolatedCurrent && canConfirmScript(isolatedCurrent.status) ? (
+                <>
+                  <ScriptReviewPanelV2
+                    statusLabel={workspaceStatus}
+                    version={isolatedCurrent.version}
+                    updatedAt={formatScriptTime(isolatedCurrent.createdAt)}
+                    canConfirm={false}
+                    pending={pending}
+                    onConfirm={() => undefined}
+                    onRequestChanges={() => undefined}
+                  />
+                  <HumanReviewBar
+                    context="这条视频脚本"
+                    confirmLabel={pending ? "正在确认…" : "确认脚本"}
+                    requestChangesLabel="需要修改"
+                    onConfirm={() => void confirm()}
+                    onRequestChanges={() => {
+                      if (currentPayload) {
+                        setDraft(currentPayload);
+                        setEditing(true);
+                      }
+                    }}
+                  />
+                </>
+              ) : null}
+
+              {justConfirmed && isolatedCurrent && canGenerateVideo(isolatedCurrent.status) ? (
+                <section className="rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] px-4 py-3">
+                  <p className="font-medium">✓ 脚本已确认</p>
+                  <p className="acf-caption mt-1">下一步：制作视频</p>
+                  <Link
+                    className="mt-3 inline-flex min-h-9 items-center rounded-[var(--acf-radius-sm)] bg-[var(--acf-brand)] px-4 text-sm text-[var(--acf-text-inverse)]"
+                    href={videoHref(projectId, isolatedCurrent.id)}
+                  >
+                    制作视频
+                  </Link>
+                  <span className="sr-only">开始制作视频</span>
+                  {currentProductionTopic ? (
+                    <button className="ml-3 text-sm underline" type="button" onClick={goNextScriptTopic}>
+                      继续制作下一条脚本
+                    </button>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {!justConfirmed && isolatedCurrent && canGenerateVideo(isolatedCurrent.status) ? (
+                <div>
+                  <p className="font-medium">✓ 脚本已确认</p>
+                  <ScriptConfirmedActions
+                    videoHref={videoHref(projectId, isolatedCurrent.id)}
+                    onModify={() => setRegenAsk(true)}
+                    onHistory={() => setHistoryOpenSignal((n) => n + 1)}
+                  />
+                </div>
+              ) : null}
+
+              {isolatedCurrent ? (
+                <details className="text-sm">
+                  <summary className="cursor-pointer">更多操作</summary>
+                  <div className="mt-3 space-y-3">
+                    <p>重新生成只会生成这一条的新脚本版本，不会改变整套周计划。</p>
+                    {canGenerateFromForm(form) ? (
+                      !regenAsk ? (
+                        <Button variant="secondary" type="button" disabled={pending} onClick={() => setRegenAsk(true)}>
+                          重新生成脚本
+                        </Button>
+                      ) : (
+                        <div className="rounded-[var(--acf-radius-md)] border px-3 py-3">
+                          <p>重新生成会创建新的脚本版本。当前版本仍会保留。</p>
+                          <div className="mt-2 flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                setRegenAsk(false);
+                                void generate();
+                              }}
+                            >
+                              继续重新生成
+                            </Button>
+                            <span className="sr-only">生成新版本</span>
+                            <Button variant="secondary" type="button" onClick={() => setRegenAsk(false)}>
+                              取消
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    ) : null}
+                    {canArchiveScript(isolatedCurrent.status) ? (
+                      <Button variant="ghost" type="button" disabled={pending} onClick={() => setArchiveAsk(true)}>
+                        归档脚本
+                      </Button>
+                    ) : null}
+                    {archiveAsk ? (
+                      <div className="rounded-[var(--acf-radius-md)] border px-3 py-3">
+                        <p>归档后，这份脚本不再用于视频制作。</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button type="button" disabled={pending} onClick={() => void archive()}>
+                            确认归档
+                          </Button>
+                          <Button variant="secondary" type="button" onClick={() => setArchiveAsk(false)}>
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+
+              {form.topicId ? (
+                <div key={historyOpenSignal}>
+                  <ScriptHistory
+                    items={scriptHistoryViews(topicScripts)}
+                    resolveRecord={(version) => topicScripts.find((item) => item.version === version) ?? null}
+                    currentVersion={isolatedCurrent?.version}
+                  />
+                </div>
+              ) : null}
+
+              {nextAction.kind === "COMPLETE" && selectedPlan ? (
+                <p className="text-sm">本期脚本已全部完成。点左侧队列可查看任意一条。</p>
+              ) : null}
+              </div>
             </div>
-          </WorkspacePageShell>
-
-          {form.topicId ? (
-            <ScriptHistory
-              items={scriptHistoryViews(topicScripts)}
-              resolveRecord={(version) => topicScripts.find((item) => item.version === version) ?? null}
-            />
-          ) : null}
+          </div>
         </div>
       ) : null}
-      <WorkflowFooterV3 projectId={projectId} stageId="script" />
+
+      {topicDetailOpen && topicCard && selectedPlan ? (
+        <TopicDetailDrawerV1
+          topic={topicCard}
+          userLabel={workspaceStatus}
+          ctaLabel="关闭"
+          ctaHref={null}
+          canScript={false}
+          readOnly
+          onClose={() => setTopicDetailOpen(false)}
+        />
+      ) : null}
+
+      {pendingSwitchTopicId ? (
+        <Dialog open title="当前修改尚未保存。" onClose={() => setPendingSwitchTopicId(null)}>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={() => {
+                const target = pendingSwitchTopicId;
+                void saveDraft().then(() => {
+                  if (target) navigateTopic(target);
+                });
+              }}
+            >
+              保存并切换
+            </Button>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => {
+                const target = pendingSwitchTopicId;
+                setEditing(false);
+                setDraft(null);
+                setUserEditedDraft(false);
+                if (target) navigateTopic(target);
+              }}
+            >
+              放弃修改
+            </Button>
+            <Button variant="ghost" type="button" onClick={() => setPendingSwitchTopicId(null)}>
+              取消
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      <NextActionBarV1
+        backHref={flow.back?.href}
+        backLabel="内容计划"
+        currentLabel="选题与脚本"
+        nextHref={flow.next?.href}
+        nextLabel="视频制作"
+      />
     </div>
   );
 }
 
-function resolveCurrentScript(scripts: ScriptRecord[], form: ScriptFormState, selectedScriptId: string): ScriptRecord | null {
-  if (selectedScriptId) {
-    const found = scripts.find((item) => item.id === selectedScriptId);
-    if (found && (!form.topicId || (found.contentPlanId === form.contentPlanId && found.topicId === form.topicId))) {
-      return found;
-    }
-  }
-  if (form.contentPlanId && form.topicId) {
-    return latestScriptForTopic(scripts, form.contentPlanId, form.topicId);
-  }
-  return null;
-}
-
-function TopicSummary({
-  topic,
-  focus,
-}: {
-  topic: ContentTopicRecord;
-  focus: { hook?: string; contentAngle?: string; contentPillar?: string; format?: string; cta?: string; reason?: string };
-}) {
-  return (
-    <dl className="mt-3 space-y-1">
-      {(focus.hook || topic.hook) && (
-        <div>
-          <dt className="text-neutral-500">开头</dt>
-          <dd className="whitespace-pre-wrap break-words">{focus.hook || topic.hook}</dd>
-        </div>
-      )}
-      {(focus.contentAngle || topic.contentAngle) && (
-        <div>
-          <dt className="text-neutral-500">内容角度</dt>
-          <dd className="break-words">{focus.contentAngle || topic.contentAngle}</dd>
-        </div>
-      )}
-      {(focus.contentPillar || focus.format || topic.contentPillar || topic.format) && (
-        <div>
-          <dt className="text-neutral-500">支柱 / 形式</dt>
-          <dd className="break-words">
-            {[focus.contentPillar || topic.contentPillar, focus.format || topic.format].filter(Boolean).join(" · ")}
-          </dd>
-        </div>
-      )}
-      {(focus.cta || topic.cta) && (
-        <div>
-          <dt className="text-neutral-500">希望观众下一步做什么</dt>
-          <dd className="break-words">{focus.cta || topic.cta}</dd>
-        </div>
-      )}
-      {focus.reason ? (
-        <div>
-          <dt className="text-neutral-500">本周位置</dt>
-          <dd className="break-words">{focus.reason}</dd>
-        </div>
-      ) : null}
-    </dl>
-  );
+function topicToCard(topic: ContentTopicRecord): TopicCardView {
+  return {
+    id: topic.id ?? "",
+    dayIndex: topic.dayIndex ?? 1,
+    title: topic.title ?? "",
+    contentAngle: topic.contentAngle,
+    contentPillar: topic.contentPillar,
+    targetAudience: topic.targetAudience,
+    estimatedDuration: topic.estimatedDuration,
+    hook: topic.hook,
+    reason: topic.reason,
+    cta: topic.cta,
+    painPoint: topic.painPoint,
+    format: topic.format,
+  };
 }
 
 export default function ContentScriptsPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-neutral-600">正在加载脚本…</p>}>
+    <Suspense fallback={<p className="text-sm">正在加载脚本工作区…</p>}>
       <ContentScriptsPageInner />
     </Suspense>
   );

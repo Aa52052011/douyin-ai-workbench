@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import {
   completedPositioningRecords,
@@ -163,6 +164,16 @@ function run() {
     },
   ]);
   assert.equal(failedOnly, null);
+
+  const apiSource = readFileSync(new URL("./positioning.api.ts", import.meta.url), "utf8");
+  assert.match(apiSource, /POSITIONING_POLL_ATTEMPTS = 120/);
+  assert.match(apiSource, /executeAndAwaitPositioning/);
+  assert.match(apiSource, /recoverPositioningRun/);
+  const nextConfig = readFileSync(new URL("../../next.config.ts", import.meta.url), "utf8");
+  assert.match(nextConfig, /proxyTimeout:\s*240_000/);
+  const page = readFileSync(new URL("../app/dashboard/projects/[projectId]/positioning/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /executeAndAwaitPositioning/);
+  assert.equal(page.includes("确认定位并继续"), true);
 
   console.log("account-positioning selfcheck PASS");
 }

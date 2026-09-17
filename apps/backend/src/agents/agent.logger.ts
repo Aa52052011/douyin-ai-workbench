@@ -11,6 +11,7 @@ export type AgentLogEvent = {
   status: string;
   durationMs?: number;
   errorCode?: string;
+  outputIssue?: string;
   promptHash?: string;
   promptLength?: number;
   responseHash?: string;

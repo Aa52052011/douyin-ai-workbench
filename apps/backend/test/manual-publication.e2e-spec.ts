@@ -261,7 +261,8 @@ describe('Manual export + manual publication (e2e)', () => {
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
     expect(exported.headers['content-type']).toMatch(/video\/mp4/);
-    expect(exported.headers['content-disposition']).toBe(`attachment; filename="video-${video.id}.mp4"`);
+    expect(exported.headers['content-disposition']).toMatch(/^attachment; filename="video_vertical\.mp4"; filename\*=UTF-8''/);
+    expect(exported.headers['content-disposition']).toMatch(/\.mp4/);
     expect(exported.headers['content-disposition']).not.toMatch(/[\r\n]/);
     expect(createHash('sha256').update(exported.body).digest('hex')).toBe(createHash('sha256').update(stored).digest('hex'));
     expect(JSON.stringify(exported.headers)).not.toContain('storageKey');

@@ -200,13 +200,14 @@ function run() {
   assert.equal(next.kind === "VIDEO" ? next.topic.topicId : "", "t1");
 
   const page = readFileSync(join(frontendSrc, "app/dashboard/projects/[projectId]/content/plans/page.tsx"), "utf8");
-  assert.match(page, /ContentPlanningWeekOverview/);
-  assert.match(page, /ContentPlanningCurrentFocus/);
+  assert.match(page, /已进入制作/);
+  assert.match(page, /data-acf-planning-more-index/);
   assert.match(page, /为什么这样规划/);
   assert.match(page, /重新规划本周内容/);
   assert.match(page, /确认本期内容规划|确认新规划|确认内容计划/);
   assert.equal(page.includes("ContentPlanningTopics"), true);
-  assert.ok(page.indexOf("ContentPlanningWeekOverview") < page.indexOf("为什么这样规划"));
+  assert.equal(page.includes("ContentPlanningWeekOverview"), false);
+  assert.ok(page.indexOf("制作进度") < page.indexOf("为什么这样规划"));
 
   const overview = readFileSync(join(frontendSrc, "components/content-planning-week-overview.tsx"), "utf8");
   assert.match(overview, /statusLabel/);

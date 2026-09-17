@@ -9,6 +9,10 @@ export type PublicationRecord = {
   title?: string;
   status: string;
   publishedAt?: string | null;
+  registeredAt?: string | null;
+  productionArtifactId?: string | null;
+  sourceVideoTitle?: string | null;
+  verificationStatus?: string | null;
   externalPostId?: string | null;
   externalUrl?: string | null;
   errorMessage?: string | null;

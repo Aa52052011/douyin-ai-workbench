@@ -6,7 +6,7 @@ export function ManualPublishGuideV4({
   publishHref?: string;
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4 text-sm" data-acf-manual-publish-guide>
+    <section className="rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4 text-sm" data-acf-manual-publish-guide>
       <p className="font-medium">下一步：手动发布</p>
       <p className="mt-1 text-neutral-600">当前使用手动发布模式。下载后可手动发布到抖音。</p>
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-neutral-700">

@@ -67,12 +67,24 @@ export class VideosController {
     @Param('id') id: string,
     @Res() res: Response,
     @Headers('x-workspace-id') workspaceHint?: string,
+    @Query('variant') variant?: string,
   ) {
-    const file = await this.videos.export(auth, id, workspaceHint);
+    const file = await this.videos.export(auth, id, workspaceHint, variant);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', String(file.body.length));
     res.setHeader('Content-Disposition', file.contentDisposition);
     res.send(file.body);
+  }
+
+  @Post(':id/final-acceptance')
+  @HttpCode(200)
+  @RequirePermission(Permission.PROJECT_UPDATE)
+  acceptFinal(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.videos.acceptFinal(auth, id, workspaceHint);
   }
 
   @Get(':id')

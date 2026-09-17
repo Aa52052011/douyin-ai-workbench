@@ -247,6 +247,21 @@ function run() {
   assert.equal(parseVideoRecord({ foo: 1 }), null);
   assert.equal(parseVideoRecord({ id: "v", status: "", createdAt: "2026-03-01T00:00:00.000Z" }), null);
   assert.ok(parseVideoRecord(video({ id: "ok", status: "PENDING" })));
+  assert.equal(
+    parseVideoRecord({
+      id: "accepted",
+      status: "COMPLETED",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      finalAcceptance: {
+        id: "acc",
+        current: true,
+        acceptedArtifactId: "art",
+        variant: "VERTICAL",
+        status: "ACCEPTED",
+      },
+    })?.finalAcceptance?.current,
+    true,
+  );
 
   // 20 no auto publish
   assert.equal(publicationCreateOnComplete(), false);
@@ -254,7 +269,8 @@ function run() {
   assert.equal(canPublishVideo("PENDING"), false);
 
   assert.equal(humanizeVideoError({ code: "VIDEO_SCRIPT_NOT_CONFIRMED" }), "所选脚本已不可用，请重新选择。");
-  assert.equal(humanizeVideoError({ code: "UNKNOWN" }), "视频生成任务创建失败，请稍后重试。");
+  assert.equal(humanizeVideoError({ code: "UNKNOWN" }, "accept"), "确认失败，请重试");
+  assert.equal(humanizeVideoError({ code: "VIDEO_EXPORT_NOT_AVAILABLE" }, "export"), "视频下载失败，请重试。");
   assert.equal(humanizeVideoError({ code: "UNKNOWN" }).includes("UNKNOWN"), false);
 
   console.log("video selfcheck PASS");

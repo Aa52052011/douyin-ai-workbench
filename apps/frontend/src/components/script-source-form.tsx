@@ -69,7 +69,7 @@ export function ScriptSourceForm({
             <span className="mb-1 block font-medium">内容计划</span>
             <select
               id="script-plan"
-              className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
+              className="w-full min-w-0 rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm"
               value={form.contentPlanId}
               disabled={pending}
               onChange={(event) =>
@@ -92,7 +92,7 @@ export function ScriptSourceForm({
             <span className="mb-1 block font-medium">选题</span>
             <select
               id="script-topic"
-              className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
+              className="w-full min-w-0 rounded-md border border-[var(--acf-border)] bg-[var(--acf-surface-elevated)] px-3 py-2 text-sm"
               value={form.topicId}
               disabled={pending || !form.contentPlanId}
               onChange={(event) => onChange({ ...form, topicId: event.target.value })}
@@ -124,14 +124,14 @@ export function ScriptSourceForm({
 
   if (collapsedByDefault) {
     return (
-      <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
+      <div className="space-y-3 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4 text-sm">
         {body}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="space-y-4 rounded-xl border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <h2 className="text-sm font-medium">这条脚本特有的信息</h2>
       {body}
     </div>

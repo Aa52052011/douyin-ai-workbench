@@ -121,6 +121,8 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
     ]);
 
   const facts = emptyStatusFacts();
+  let latestPlanScriptIds: Set<string> | null = null;
+  let latestPlanVideoIds: Set<string> | null = null;
 
   if (briefResult.ok) {
     const brief = briefResult.value;
@@ -183,11 +185,14 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
     facts.hasScriptEligiblePlan = readable.some((item) => item.status === "CONFIRMED" || item.status === "ARCHIVED");
     const latest = readable[0];
     if (latest) {
+      facts.latestPlanId = latest.id;
       facts.latestPlanStatus = latest.status;
       if (latest.status === "DRAFT") {
         facts.latestDraftPlanId = latest.id;
       }
-      facts.summary.planTitle = parsePlanPayload(latest.payload)?.title || latest.title;
+      const parsed = parsePlanPayload(latest.payload);
+      facts.latestPlanTopicCount = parsed?.topics?.length ?? null;
+      facts.summary.planTitle = parsed?.title || latest.title;
       facts.summary.planStatus = planStatusLabel(latest.status);
     }
   } else {
@@ -208,13 +213,45 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
       facts.draftScriptPlanId = latestDraft.contentPlanId ?? null;
       facts.draftScriptTopicId = latestDraft.topicId ?? null;
     }
+    const latestPlanId = facts.latestPlanId;
+    const onLatest = latestPlanId
+      ? scripts.filter((item) => item.contentPlanId === latestPlanId)
+      : [];
+    facts.scriptsOnLatestPlan = latestPlanId ? onLatest.length : null;
+    facts.completedScriptsOnLatestPlan = latestPlanId
+      ? onLatest.filter((item) => isCompletedScriptStatus(item.status) && parseScriptPayload(item.payload)).length
+      : null;
+    facts.draftScriptsOnLatestPlan = latestPlanId ? onLatest.filter((item) => item.status === "DRAFT").length : null;
+    latestPlanScriptIds = latestPlanId ? new Set(onLatest.map((item) => item.id)) : null;
+    if (latestPlanScriptIds && latestPlanScriptIds.size === 0) {
+      facts.acceptedVideosOnLatestPlan = 0;
+      facts.publishedOnLatestPlan = 0;
+      facts.hasMetricsOnLatestPlan = false;
+    }
     const latestConfirmed = completed.find((item) => item.status === "CONFIRMED");
     facts.latestConfirmedScriptId = latestConfirmed?.id ?? completed[0]?.id ?? null;
-    const latest = scripts.find((item) => parseScriptPayload(item.payload));
-    if (latest) {
-      facts.summary.scriptTitle = parseScriptPayload(latest.payload)?.title || latest.title;
-      facts.summary.scriptStatus = scriptStatusLabel(latest.status);
+    const latestScript = scripts.find((item) => parseScriptPayload(item.payload));
+    if (latestScript) {
+      facts.summary.scriptTitle = parseScriptPayload(latestScript.payload)?.title || latestScript.title;
+      facts.summary.scriptStatus = scriptStatusLabel(latestScript.status);
     }
+
+    const topics = parsePlanPayload(
+      planResult.ok
+        ? asArray<ContentPlanRecord>(planResult.value).find((item) => item.id === latestPlanId)?.payload
+        : undefined,
+    )?.topics ?? [];
+    facts.recentTopics = topics.slice(0, 3).map((topic) => {
+      const topicId = topic.id || "";
+      const script = onLatest.find((item) => item.topicId === topicId);
+      let statusLabel = "待生成脚本";
+      if (script && isCompletedScriptStatus(script.status)) statusLabel = "脚本已确认";
+      else if (script?.status === "DRAFT") statusLabel = "待确认脚本";
+      const href = topicId
+        ? `/dashboard/projects/${projectId}/content/scripts?contentPlanId=${encodeURIComponent(latestPlanId || "")}&topicId=${encodeURIComponent(topicId)}`
+        : `/dashboard/projects/${projectId}/content/scripts`;
+      return { topicId, title: topic.title?.trim() || "未命名选题", statusLabel, href };
+    });
   } else {
     facts.hasCompletedScript = null;
     facts.hasDraftScript = null;
@@ -224,6 +261,18 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
     const videos = asArray<VideoRecord>(videoResult.value)
       .filter((item) => Boolean(item?.id && item.status && belongsToProject(item, projectId)))
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    const awaiting = videos.filter(
+      (item) => item.status === "COMPLETED" && item.finalAcceptance?.current !== true,
+    );
+    facts.hasVideoAwaitingAcceptance = awaiting.length > 0;
+    facts.awaitingAcceptanceCount = awaiting.length;
+    facts.acceptedVideoCount = videos.filter(isEligiblePublishVideo).length;
+    if (latestPlanScriptIds) {
+      const cycleScriptIds = latestPlanScriptIds;
+      const cycleVideos = videos.filter((item) => Boolean(item.scriptId && cycleScriptIds.has(item.scriptId)));
+      latestPlanVideoIds = new Set(cycleVideos.map((item) => item.id));
+      facts.acceptedVideosOnLatestPlan = cycleVideos.filter(isEligiblePublishVideo).length;
+    }
     facts.hasVideo = videos.length > 0;
     facts.hasCompletedVideo = videos.some(isEligiblePublishVideo);
     facts.hasProcessingVideo = videos.some((item) => isProcessingVideoStatus(item.status));
@@ -245,6 +294,7 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
       .sort((a, b) => +new Date(b.publishedAt || b.createdAt) - +new Date(a.publishedAt || a.createdAt));
     const published = publications.filter((item) => item.status === "PUBLISHED");
     const pending = publications.filter((item) => item.status === "PENDING");
+    facts.publishedCount = published.length;
     facts.hasPublishedPublication = published.length > 0;
     facts.hasPendingPublication = pending.length > 0;
     facts.pendingPublicationVideoId = pending[0]?.videoId ?? null;
@@ -257,6 +307,19 @@ export async function loadProjectStatus(accessToken: string, projectId: string):
       published.map((item) => item.id),
     );
     facts.hasMetrics = metrics.hasMetrics;
+    if (latestPlanVideoIds) {
+      const cyclePublished = published.filter((item) => Boolean(item.videoId && latestPlanVideoIds.has(item.videoId)));
+      facts.publishedOnLatestPlan = cyclePublished.length;
+      if (cyclePublished.length === 0) {
+        facts.hasMetricsOnLatestPlan = false;
+      } else {
+        const cycleMetrics = await probePublicationMetrics(
+          accessToken,
+          cyclePublished.map((item) => item.id),
+        );
+        facts.hasMetricsOnLatestPlan = cycleMetrics.hasMetrics;
+      }
+    }
     if (metrics.publicationId) {
       facts.publishedPublicationId = metrics.publicationId;
     }

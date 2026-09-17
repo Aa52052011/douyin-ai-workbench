@@ -1,12 +1,18 @@
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { calculatePerformanceMetricsV1, dataSufficiencyFromCount, type PerformanceMetricsSummaryV1 } from './metrics-calculator.js';
 import { assertNoCredentials, hashAnalysisInput, mockPerformanceAnalysisV1, RETENTION_NOT_AVAILABLE } from './mock-analyzer.js';
+import {
+  applyActionableReview,
+  buildActionableRecommendations,
+  isAcceptedReviewStatus,
+  mergePersistedRecommendations,
+  type ActionableRecommendationV1,
+} from './actionable-recommendation.mapper.js';
 import type {
   AnalysisWindowKind,
   BenchmarkContextV1,
   FeedbackCycleStatus,
   PerformanceFindingV1,
-  PerformanceRecommendationV1,
   RecommendationReviewAction,
 } from './performance-analysis.types.js';
 
@@ -41,7 +47,7 @@ export type PerformanceAnalysisInputV1 = {
 
 export type NextContentPlanningFeedbackV1 = {
   schemaVersion: 'next.content-planning-feedback:v1';
-  approvedRecommendations: PerformanceRecommendationV1[];
+  approvedRecommendations: ActionableRecommendationV1[];
   sourceAnalysisId: string;
   sourcePublishedPostId: string;
   feedbackCycleId: string;
@@ -54,10 +60,8 @@ export function requireMetricsOrThrow(snapshots: unknown[], llmInvoked: { curren
   }
 }
 
-export function requireAnalysisContext(script: unknown, plan: unknown): void {
-  if (script == null || plan == null) {
-    throw new AppError(ErrorCode.INSUFFICIENT_ANALYSIS_CONTEXT);
-  }
+export function requireAnalysisContext(_script: unknown, _plan: unknown): void {
+  // Missing script/plan reduces context. It must not hide metric-based recommendations.
 }
 
 export function assertFindingEvidencePolicy(findings: PerformanceFindingV1[]): void {
@@ -112,7 +116,7 @@ export function runDeterministicPerformanceAnalysis(input: PerformanceAnalysisIn
   benchmarkContext: BenchmarkContextV1;
   evidenceIndex: Array<{ kind: string; id: string; label: string }>;
   findings: PerformanceFindingV1[];
-  recommendations: PerformanceRecommendationV1[];
+  recommendations: ActionableRecommendationV1[];
   retention: typeof RETENTION_NOT_AVAILABLE;
   confidenceSummary: {
     overall: 'LOW' | 'MEDIUM' | 'UNKNOWN';
@@ -148,8 +152,9 @@ export function runDeterministicPerformanceAnalysis(input: PerformanceAnalysisIn
     fixture: input.metricsSnapshots.some((row) => row.fixture === true),
   });
   assertFindingEvidencePolicy(mock.findings);
-  const evidenceIndex = mock.findings.flatMap((f) => f.evidenceRefs);
-  const packed = JSON.stringify({ findings: mock.findings, recommendations: mock.recommendations });
+  const recommendations = buildActionableRecommendations(input.metricsSnapshots);
+  const evidenceIndex = [...mock.findings.flatMap((f) => f.evidenceRefs), ...recommendations.flatMap((r) => r.evidenceRefs)];
+  const packed = JSON.stringify({ findings: mock.findings, recommendations });
   if (packed.includes('高于平均') || packed.includes('低于行业')) {
     throw new Error('BENCHMARK_CLAIM_WITHOUT_BENCHMARK');
   }
@@ -162,7 +167,7 @@ export function runDeterministicPerformanceAnalysis(input: PerformanceAnalysisIn
     benchmarkContext: mock.benchmarkContext,
     evidenceIndex,
     findings: mock.findings,
-    recommendations: mock.recommendations,
+    recommendations,
     retention: mock.retention,
     confidenceSummary: {
       overall: metricsSummary.snapshotCount < 2 ? 'UNKNOWN' : 'LOW',
@@ -182,27 +187,28 @@ export function runDeterministicPerformanceAnalysis(input: PerformanceAnalysisIn
   };
 }
 
+export { mergePersistedRecommendations };
+
 export function applyRecommendationReview(
-  recommendations: PerformanceRecommendationV1[],
+  recommendations: ActionableRecommendationV1[],
   recommendationId: string,
   action: RecommendationReviewAction,
-): PerformanceRecommendationV1[] {
-  return recommendations.map((row) =>
-    row.recommendationId === recommendationId
-      ? {
-          ...row,
-          reviewStatus: action === 'APPROVE' ? 'APPROVED' : action === 'REJECT' ? 'REJECTED' : 'DEFERRED',
-        }
-      : row,
-  );
+  meta: { reviewedBy?: string | null; reviewedAt?: string; userNote?: string | null } = {},
+): ActionableRecommendationV1[] {
+  const next = applyActionableReview(recommendations, recommendationId, action, meta);
+  if (!next.some((row) => row.recommendationId === recommendationId)) {
+    throw new AppError(ErrorCode.VALIDATION_ERROR, 'recommendation not found');
+  }
+  return next;
 }
 
-export function feedbackStatusFromRecommendations(recommendations: PerformanceRecommendationV1[]): FeedbackCycleStatus {
+export function feedbackStatusFromRecommendations(recommendations: Array<{ reviewStatus: string }>): FeedbackCycleStatus {
   const statuses = recommendations.map((row) => row.reviewStatus);
+  const accepted = (s: string) => s === 'APPROVED' || s === 'ACCEPTED';
   if (statuses.every((s) => s === 'PENDING' || s === 'DEFERRED')) return 'HUMAN_REVIEW_REQUIRED';
-  if (statuses.every((s) => s === 'APPROVED')) return 'APPROVED';
+  if (statuses.every((s) => accepted(s))) return 'APPROVED';
   if (statuses.every((s) => s === 'REJECTED')) return 'REJECTED';
-  if (statuses.some((s) => s === 'APPROVED') && statuses.some((s) => s === 'REJECTED' || s === 'DEFERRED' || s === 'PENDING')) {
+  if (statuses.some((s) => accepted(s)) && statuses.some((s) => s === 'REJECTED' || s === 'DEFERRED' || s === 'PENDING')) {
     return 'PARTIALLY_APPROVED';
   }
   return 'HUMAN_REVIEW_REQUIRED';
@@ -212,11 +218,11 @@ export function buildNextContentPlanningFeedback(input: {
   analysisId: string;
   publishedPostId: string;
   feedbackCycleId: string;
-  recommendations: PerformanceRecommendationV1[];
+  recommendations: ActionableRecommendationV1[];
 }): NextContentPlanningFeedbackV1 {
   return {
     schemaVersion: 'next.content-planning-feedback:v1',
-    approvedRecommendations: input.recommendations.filter((row) => row.reviewStatus === 'APPROVED'),
+    approvedRecommendations: input.recommendations.filter((row) => isAcceptedReviewStatus(row.reviewStatus)),
     sourceAnalysisId: input.analysisId,
     sourcePublishedPostId: input.publishedPostId,
     feedbackCycleId: input.feedbackCycleId,

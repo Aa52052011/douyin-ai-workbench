@@ -20,7 +20,7 @@ export function ProjectCard({
 }) {
   const meta = [project.industry, `目标平台：${projectPlatformLabel(project.platform)}`].filter(Boolean).join(" · ");
   return (
-    <article className="rounded-xl border border-neutral-200 bg-white p-4">
+    <article className="rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-medium">

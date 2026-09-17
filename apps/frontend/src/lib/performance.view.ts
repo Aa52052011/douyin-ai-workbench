@@ -7,7 +7,12 @@ import {
   type PerformanceInsightResult,
   type PerformanceSummaryRecord,
 } from "./performance.types";
-import { mayShowRetentionClaim, metricSourceUserCopy, trendDelta } from "./ux/publication-monitoring-v5";
+import {
+  evidenceForInsight,
+  INSUFFICIENT_EVIDENCE_COPY,
+  mayShowRetentionClaim,
+  metricSourceUserCopy,
+} from "./ux/publication-monitoring-v5";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -130,8 +135,12 @@ export function metricSourceLabel(source?: string): string {
   }
 }
 
+export function displayMetricValue(value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : String(value);
+}
+
 export function formatCount(value?: number | null): string {
-  return typeof value === "number" ? String(value) : "—";
+  return displayMetricValue(value);
 }
 
 export function formatRate(value?: number | null): string {
@@ -195,7 +204,7 @@ function interactionLabel(summary: PerformanceSummaryRecord): string {
 
 function coverageLabel(summary: PerformanceSummaryRecord): string {
   const count = summary.snapshotCount ?? 0;
-  if (count === 0) return "暂无数据";
+  if (count === 0) return "还没有足够数据";
   if (count === 1) return "样本有限";
   return "数据可用";
 }
@@ -203,7 +212,7 @@ function coverageLabel(summary: PerformanceSummaryRecord): string {
 export function dataSufficiencyLabel(value?: string): string {
   switch (value) {
     case "INSUFFICIENT":
-      return "暂无数据";
+      return "还没有足够数据";
     case "PARTIAL":
       return "样本有限";
     case "SUFFICIENT":
@@ -258,6 +267,35 @@ export function isQualityInsight(code?: string): boolean {
   return code === "INSUFFICIENT_DATA" || code === "MIXED_SOURCE_DATA" || code === "METRIC_DECREASE_DETECTED" || code === "SAME_TIME_CONFLICT";
 }
 
+export function performanceReviewItems(
+  result: PerformanceInsightResult | null,
+  snapshots: MetricSnapshotRecord[],
+  hasRetention = false,
+) {
+  const sorted = sortSnapshotsNewestFirst(snapshots);
+  const latest = sorted[0];
+  const previous = sorted[1];
+  return (result?.insights ?? [])
+    .map((item, index) => {
+      const title = humanizePerformanceInsight(item.code);
+      if (!title) return null;
+      if (!hasRetention && (item.code === "STRONG_COMPLETION_RATE" || item.code === "WEAK_COMPLETION_RATE")) {
+        return null;
+      }
+      const evidence = evidenceForInsight(item.code, previous, latest);
+      return {
+        id: item.code ?? `rec-${index}`,
+        title,
+        reason: "基于目前数据，这条内容还有以下可优化空间",
+        evidence,
+        confidence: evidence === INSUFFICIENT_EVIDENCE_COPY ? "UNKNOWN" : item.confidence,
+        type: item.severity === "positive" ? "STRENGTH" : item.severity === "negative" ? "WEAKNESS" : "OBSERVATION",
+        group: item.category,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item != null);
+}
+
 export function insightViews(result: PerformanceInsightResult | null, hasRetention = false): InsightView[] {
   return (result?.insights ?? [])
     .filter((item) => {
@@ -305,20 +343,19 @@ export function optimizationPretendsFullFeedback(): boolean {
   return false;
 }
 
-export function metricHistoryRows(items: MetricSnapshotRecord[], publishedAt?: string | null) {
+export function metricHistoryRows(items: MetricSnapshotRecord[], _publishedAt?: string | null) {
   const sorted = sortSnapshotsNewestFirst(items);
   return sorted.map((item, index) => {
-    const older = sorted[index + 1];
-    const viewsChange = trendDelta(older?.views, item.views);
+    const previousObservedAt = sorted[index + 1]?.observedAt;
     return {
       observedAtLabel: formatObservedAt(item.observedAt),
-      hoursLabel: hoursSince(publishedAt, item.observedAt),
-      views: formatCount(item.views),
-      likes: formatCount(item.likes),
-      comments: formatCount(item.comments),
-      shares: formatCount(item.shares),
-      favorites: formatCount(item.favorites),
-      changeLabel: viewsChange == null ? "—" : viewsChange > 0 ? `播放 +${viewsChange}` : `播放 ${viewsChange}`,
+      hoursLabel: hoursSince(previousObservedAt, item.observedAt),
+      views: displayMetricValue(item.views),
+      likes: displayMetricValue(item.likes),
+      comments: displayMetricValue(item.comments),
+      shares: displayMetricValue(item.shares),
+      favorites: displayMetricValue(item.favorites),
+      changeLabel: displayMetricValue(item.newFollowers),
       sourceLabel: metricSourceUserCopy(item.source),
       readable: Boolean(parseMetricSnapshot(item)),
     };

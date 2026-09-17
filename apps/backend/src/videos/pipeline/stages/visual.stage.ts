@@ -12,6 +12,7 @@ import { isPaidImageProvider, visualMaxConcurrency } from '../../../media/visual
 import { VISUAL_PROMPT_VERSION } from '../visual-prompt.builder.js';
 import {
   findReusableVisualAsset,
+  metadataString,
   visualClientRequestId,
 } from '../visual-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
@@ -305,6 +306,11 @@ export class VisualGenerationStage {
       return null;
     }
     if (!(await ctx.storage.exists(row.storageKey))) {
+      return null;
+    }
+    const fromVideo = metadataString(row.metadata, 'videoId');
+    const stage = metadataString(row.metadata, 'stage');
+    if ((row.provider === 'wanx' || stage === 'visual') && fromVideo && fromVideo !== ctx.plan.videoId) {
       return null;
     }
     return { id: row.id, storageKey: row.storageKey };

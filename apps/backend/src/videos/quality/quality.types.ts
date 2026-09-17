@@ -7,9 +7,9 @@ export const MAX_SHOT_DURATION_MS = 20_000;
 export const MIN_SHOT_DURATION_MS = 400;
 export const HOOK_LATE_AFTER_MS = 3_000;
 export const OPENING_STATIC_MS = 8_000;
-export const SUBTITLE_OVERFLOW_MAX_CHARS = 18;
+export const SUBTITLE_OVERFLOW_MAX_CHARS = 28;
 export const SUBTITLE_OVERFLOW_MAX_LINES = 2;
-export const SUBTITLE_EST_FONT_PX = 42;
+export const SUBTITLE_EST_FONT_PX = 22;
 
 export const QUALITY_CATEGORIES = [
   'TECHNICAL',

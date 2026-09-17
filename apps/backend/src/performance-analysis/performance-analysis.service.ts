@@ -11,6 +11,7 @@ import {
 } from '../agents/agent.types.js';
 import {
   applyRecommendationReview,
+  mergePersistedRecommendations,
   buildNextContentPlanningFeedback,
   feedbackStatusFromRecommendations,
   neverMutateContentPlan,
@@ -18,11 +19,12 @@ import {
   type NextContentPlanningFeedbackV1,
   type PerformanceAnalysisInputV1,
 } from './performance-analysis.engine.js';
-import type {
-  AnalysisWindowKind,
-  PerformanceRecommendationV1,
-  RecommendationReviewAction,
-} from './performance-analysis.types.js';
+import {
+  collectAcceptedPerformanceFeedback,
+  type AcceptedPerformanceFeedbackItemV1,
+  type ActionableRecommendationV1,
+} from './actionable-recommendation.mapper.js';
+import type { AnalysisWindowKind, RecommendationReviewAction } from './performance-analysis.types.js';
 
 @Injectable()
 export class PerformanceAnalysisService {
@@ -51,8 +53,8 @@ export class PerformanceAnalysisService {
       workspaceId: post.workspaceId,
       projectId: post.projectId,
       publishedPostId: post.id,
-      contentPlanSnapshot: plan ? { id: plan.id, title: plan.title, payload: plan.payload } : null,
-      scriptSnapshot: script ? { id: script.id, title: script.title, payload: script.payload } : null,
+      contentPlanSnapshot: plan ? { id: plan.id, title: plan.title } : { title: '' },
+      scriptSnapshot: script ? { id: script.id, title: script.title } : { title: '' },
       artifactSnapshot: { artifactId: post.productionArtifactId, sha256: post.artifactSha },
       publicationSnapshot: {
         id: post.id,
@@ -77,7 +79,7 @@ export class PerformanceAnalysisService {
       analysisWindow: window,
       previousComparablePosts: [],
     };
-    const computed = runDeterministicPerformanceAnalysis(input);
+    const computed = this.computeAnalysis(input);
     if (!dto.force) {
       const existing = await this.prisma.performanceAnalysis.findFirst({
         where: {
@@ -152,10 +154,30 @@ export class PerformanceAnalysisService {
 
   async list(auth: AuthContext, publishedPostId: string) {
     await this.requirePost(auth, publishedPostId);
-    const rows = await this.prisma.performanceAnalysis.findMany({
+    let rows = await this.prisma.performanceAnalysis.findMany({
       where: { tenantId: auth.tenantId, publishedPostId },
       orderBy: { createdAt: 'desc' },
     });
+    if (rows.length === 0) {
+      const metricCount = await this.prisma.publicationMetricSnapshot.count({
+        where: { tenantId: auth.tenantId, publicationId: publishedPostId },
+      });
+      if (metricCount > 0) {
+        try {
+          await this.analyze(auth, publishedPostId, { analysisWindow: 'LATEST_ONLY', force: false });
+        } catch (error) {
+          if (error instanceof AppError) throw error;
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            error instanceof Error ? error.message : 'performance analysis persist failed',
+          );
+        }
+        rows = await this.prisma.performanceAnalysis.findMany({
+          where: { tenantId: auth.tenantId, publishedPostId },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    }
     return { items: rows.map((row) => this.toPublic(row)) };
   }
 
@@ -165,7 +187,8 @@ export class PerformanceAnalysisService {
       where: { tenantId: auth.tenantId, analysisId: row.id },
       orderBy: { createdAt: 'desc' },
     });
-    return { ...this.toPublic(row), feedbackCycle: cycle };
+    const recommendations = mergePersistedRecommendations(row.recommendations, cycle?.recommendations);
+    return { ...this.toPublic(row), recommendations, feedbackCycle: cycle };
   }
 
   async reviewRecommendation(
@@ -173,6 +196,7 @@ export class PerformanceAnalysisService {
     analysisId: string,
     recommendationId: string,
     action: RecommendationReviewAction,
+    userNote?: string | null,
   ) {
     const row = await this.requireAnalysis(auth, analysisId);
     const post = await this.requirePost(auth, row.publishedPostId);
@@ -180,9 +204,10 @@ export class PerformanceAnalysisService {
       ? await this.prisma.contentPlan.findFirst({ where: { tenantId: auth.tenantId, id: post.contentPlanId } })
       : null;
     const recs = applyRecommendationReview(
-      (row.recommendations as unknown as PerformanceRecommendationV1[]) ?? [],
+      (row.recommendations as unknown as ActionableRecommendationV1[]) ?? [],
       recommendationId,
       action,
+      { reviewedBy: auth.userId, userNote: userNote ?? null },
     );
     const status = feedbackStatusFromRecommendations(recs);
     await this.prisma.performanceAnalysis.update({
@@ -200,6 +225,31 @@ export class PerformanceAnalysisService {
     return this.getById(auth, analysisId);
   }
 
+  async listAcceptedForProject(
+    auth: AuthContext,
+    projectId: string,
+    workspaceHint?: string,
+  ): Promise<{ items: AcceptedPerformanceFeedbackItemV1[]; count: number; referenceOnly: true }> {
+    const workspaceId = resolveWorkspaceId(auth, workspaceHint);
+    if (!isUuid(projectId)) throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, tenantId: auth.tenantId, workspaceId },
+    });
+    if (!project) throw new AppError(ErrorCode.PROJECT_NOT_FOUND);
+    const cycles = await this.prisma.contentFeedbackCycle.findMany({
+      where: { tenantId: auth.tenantId, workspaceId, projectId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const items = cycles.flatMap((cycle) =>
+      collectAcceptedPerformanceFeedback({
+        sourcePublicationId: cycle.sourcePublishedPostId,
+        sourceAnalysisId: cycle.analysisId,
+        recommendations: (cycle.recommendations as unknown as ActionableRecommendationV1[]) ?? [],
+      }),
+    );
+    return { items, count: items.length, referenceOnly: true };
+  }
+
   async applyFeedback(auth: AuthContext, analysisId: string): Promise<{
     cycleStatus: string;
     appliedToNextPlan: true;
@@ -211,7 +261,7 @@ export class PerformanceAnalysisService {
       where: { tenantId: auth.tenantId, analysisId: row.id },
     });
     if (!cycle) throw new AppError(ErrorCode.FEEDBACK_CYCLE_NOT_FOUND);
-    const recs = (cycle.recommendations as unknown as PerformanceRecommendationV1[]) ?? [];
+    const recs = (cycle.recommendations as unknown as ActionableRecommendationV1[]) ?? [];
     const handoff = buildNextContentPlanningFeedback({
       analysisId: row.id,
       publishedPostId: row.publishedPostId,
@@ -296,6 +346,18 @@ export class PerformanceAnalysisService {
     });
     if (!post) throw new AppError(ErrorCode.PUBLICATION_NOT_FOUND);
     return post;
+  }
+
+  private computeAnalysis(input: PerformanceAnalysisInputV1) {
+    try {
+      return runDeterministicPerformanceAnalysis(input);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        error instanceof Error ? error.message : 'performance analysis failed',
+      );
+    }
   }
 
   private async requireAnalysis(auth: AuthContext, id: string) {

@@ -2,15 +2,15 @@ import type { ProductionProgress, TopicProductionItem } from "../lib/content-pla
 
 function statusTone(status: TopicProductionItem["status"], isCurrent: boolean): string {
   if (isCurrent) {
-    return "border-neutral-900 bg-white shadow-sm ring-1 ring-neutral-900";
+    return "acf-stage-current border-[var(--acf-border)] bg-[var(--acf-surface)]";
   }
   if (status === "PUBLISHED") {
-    return "border-neutral-200 bg-neutral-50 opacity-80";
+    return "border-[var(--acf-border)] bg-[var(--acf-surface-muted)] opacity-80";
   }
   if (status === "SCRIPT_READY" || status === "VIDEO_READY") {
-    return "border-neutral-200 bg-neutral-50";
+    return "border-[var(--acf-border)] bg-[var(--acf-surface-muted)]";
   }
-  return "border-neutral-200 bg-white";
+  return "border-[var(--acf-border)] bg-[var(--acf-surface)]";
 }
 
 export function ContentPlanningWeekOverview({
@@ -33,7 +33,7 @@ export function ContentPlanningWeekOverview({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="space-y-3 rounded-[var(--acf-radius-md)] border border-[var(--acf-border)] bg-[var(--acf-surface)] p-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-sm font-medium">{isSevenDay ? "7 天内容总览" : "本期内容总览"}</h2>

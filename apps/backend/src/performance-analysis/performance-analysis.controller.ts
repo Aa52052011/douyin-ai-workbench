@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
 import type { AuthContext } from '../auth/auth.types.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -14,7 +14,6 @@ export class PerformanceAnalysisController {
   constructor(private readonly analyses: PerformanceAnalysisService) {}
 
   @Post('monitoring/posts/:publishedPostId/analyze')
-  @RequirePermission(Permission.AGENT_EXECUTE)
   analyze(
     @CurrentUser() auth: AuthContext,
     @Param('publishedPostId') publishedPostId: string,
@@ -26,6 +25,15 @@ export class PerformanceAnalysisController {
   @Get('monitoring/posts/:publishedPostId/analyses')
   list(@CurrentUser() auth: AuthContext, @Param('publishedPostId') publishedPostId: string) {
     return this.analyses.list(auth, publishedPostId);
+  }
+
+  @Get('projects/:projectId/accepted-performance-feedback')
+  listAccepted(
+    @CurrentUser() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Headers('x-workspace-id') workspaceHint?: string,
+  ) {
+    return this.analyses.listAcceptedForProject(auth, projectId, workspaceHint);
   }
 
   @Get('performance-analyses/:analysisId')
@@ -41,7 +49,7 @@ export class PerformanceAnalysisController {
     @Param('recommendationId') recommendationId: string,
     @Body() dto: ReviewRecommendationDto,
   ) {
-    return this.analyses.reviewRecommendation(auth, analysisId, recommendationId, dto.action);
+    return this.analyses.reviewRecommendation(auth, analysisId, recommendationId, dto.action, dto.userNote);
   }
 
   @Post('performance-analyses/:analysisId/feedback-cycle/apply')

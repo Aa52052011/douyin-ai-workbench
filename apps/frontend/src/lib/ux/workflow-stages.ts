@@ -1,4 +1,5 @@
 import { emptyStatusFacts, type ProjectStatusFacts } from "../project-status";
+import { latestPlanNeedsScripts } from "./next-action-v2";
 
 export const WORKFLOW_STAGE_IDS = [
   "positioning",
@@ -39,8 +40,8 @@ export function resolveWorkflowStagesV2(projectId: string, facts: ProjectStatusF
   const base = `/dashboard/projects/${projectId}`;
   const positioningDone = Boolean(facts.positioningValid);
   const planningDone = Boolean(facts.hasScriptEligiblePlan || facts.latestPlanStatus === "CONFIRMED");
-  const scriptDone = Boolean(facts.hasCompletedScript);
-  const videoDone = Boolean(facts.hasCompletedVideo);
+  const scriptDone = latestPlanNeedsScripts(facts) ? false : Boolean(facts.hasCompletedScript);
+  const videoDone = facts.hasVideoAwaitingAcceptance === true ? false : Boolean(facts.hasCompletedVideo);
   const publishDone = Boolean(facts.hasPublishedPublication);
   const metricsDone = Boolean(facts.hasMetrics);
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { JobStatus, PrismaClient, VideoStatus } from '@prisma/client';
+import { JobStatus, PrismaClient, VideoStatus, AssetLinkRole } from '@prisma/client';
 import { AppError, ErrorCode } from '../common/errors/app-error.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { StorageService } from '../media/storage/storage.service.js';
@@ -160,6 +160,38 @@ export class VideoGenerationService {
         PROGRESS.quality_check,
       );
       this.assertHeartbeat(heartbeat);
+
+      try {
+        const landscape = await this.compose.run(ctx, {
+          voiceDuration: voice.duration,
+          force: true,
+          resolution: '1920x1080',
+          aspectRatio: '16:9',
+          composeRole: 'landscape',
+        });
+        await this.prisma.assetLink.create({
+          data: {
+            tenantId: ctx.job.tenantId,
+            workspaceId: ctx.job.workspaceId,
+            projectId: ctx.job.projectId,
+            assetId: landscape.assetId,
+            videoId: ctx.plan.videoId,
+            jobId: ctx.job.id,
+            role: AssetLinkRole.VIDEO_PREVIEW,
+          },
+        });
+        const latest = asPipelineOutput(ctx.job.output);
+        latest.landscape = {
+          assetId: landscape.assetId,
+          width: landscape.width,
+          height: landscape.height,
+          duration: landscape.duration,
+        };
+        await this.jobs.mergeOutput(tenantId, jobId, latest as never, PROGRESS.quality_check);
+        ctx.job = await this.jobs.getById(tenantId, jobId);
+      } catch (error) {
+        this.logger.warn(`LANDSCAPE_COMPOSE unavailable: ${error instanceof Error ? error.message : 'unknown'}`);
+      }
 
       await this.beginStage(ctx, 'finalize');
       if (ctx.failStage === 'finalize') {

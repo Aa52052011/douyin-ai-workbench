@@ -10,10 +10,7 @@ export const GLOBAL_NAV_V2 = [
     id: "publish-data",
     href: "/dashboard/monitoring",
     label: "发布与数据",
-    match: (path: string) =>
-      path.startsWith("/dashboard/monitoring") ||
-      /\/publish(?:\/|$)/.test(path) ||
-      /\/performance(?:\/|$|\?)/.test(path),
+    match: (path: string) => path === "/dashboard/monitoring" || path.startsWith("/dashboard/monitoring/"),
   },
   { id: "settings", href: "/dashboard/settings", label: "设置", match: (path: string) => path.startsWith("/dashboard/settings") },
 ] as const;

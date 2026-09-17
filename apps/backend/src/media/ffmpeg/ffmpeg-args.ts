@@ -22,6 +22,35 @@ export function escapeSubtitlesFilterPath(absPath: string): string {
   return `subtitles=filename='${escaped}'`;
 }
 
+export const SUBTITLE_FONT_SIZE = 10;
+export const SUBTITLE_BOTTOM_OFFSET_CM = 1.5;
+/** 9:16 成片按手机满屏观看时的画面物理高度参考，仅用于把 1.5cm 换成帧像素。 */
+export const SUBTITLE_FRAME_PHYSICAL_HEIGHT_CM = 16;
+/** ffmpeg/libass 将 SRT 转 ASS 时的默认 PlayRes（不是成片分辨率）。 */
+export const SUBTITLE_LIBASS_PLAY_RES_X = 384;
+export const SUBTITLE_LIBASS_PLAY_RES_Y = 288;
+export const SUBTITLE_ASS_ALIGNMENT = 2;
+
+export function subtitleBottomOffsetPx(frameHeight: number): number {
+  const height = Number.isFinite(frameHeight) && frameHeight > 0 ? frameHeight : 1920;
+  return Math.max(1, Math.round((SUBTITLE_BOTTOM_OFFSET_CM / SUBTITLE_FRAME_PHYSICAL_HEIGHT_CM) * height));
+}
+
+export function subtitleMarginV(frameHeight: number): number {
+  const height = Number.isFinite(frameHeight) && frameHeight > 0 ? frameHeight : 1920;
+  const videoPx = subtitleBottomOffsetPx(height);
+  return Math.max(1, Math.round((videoPx * SUBTITLE_LIBASS_PLAY_RES_Y) / height));
+}
+
+export function subtitleBurnStyle(frameHeight: number): string {
+  return `FontSize=${SUBTITLE_FONT_SIZE},Outline=1,Shadow=0,MarginV=${subtitleMarginV(frameHeight)},MarginL=64,MarginR=64,Alignment=${SUBTITLE_ASS_ALIGNMENT},BorderStyle=1`;
+}
+
+export function burnSubtitlesFilter(absPath: string, frameHeight = 1920): string {
+  const style = subtitleBurnStyle(frameHeight).replace(/,/g, '\\,');
+  return `${escapeSubtitlesFilterPath(absPath)}:force_style='${style}'`;
+}
+
 export type FfmpegSceneClip = {
   path: string;
   duration: number;
@@ -67,7 +96,7 @@ export function buildFfmpegComposeArgs(input: {
   });
   const concatInputs = input.scenes.map((_, index) => `[v${index}]`).join('');
   filters.push(`${concatInputs}concat=n=${input.scenes.length}:v=1:a=0[vcat]`);
-  filters.push(`[vcat]${escapeSubtitlesFilterPath(input.subtitlePath)}[vout]`);
+  filters.push(`[vcat]${burnSubtitlesFilter(input.subtitlePath, input.height)}[vout]`);
   const audioIndex = input.scenes.length;
   args.push(
     '-filter_complex',

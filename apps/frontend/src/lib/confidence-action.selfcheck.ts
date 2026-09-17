@@ -99,9 +99,8 @@ function run() {
   );
   assert.equal(planningPage.includes("本次计划依据"), false);
   assert.match(planningPage, /为什么这样规划/);
-  assert.match(planningPage, /ContentPlanningWeekOverview/);
-  // week overview rendered before explanation
-  assert.ok(planningPage.indexOf("ContentPlanningWeekOverview") < planningPage.indexOf("为什么这样规划"));
+  assert.match(planningPage, /data-acf-planning-more-index/);
+  assert.ok(planningPage.indexOf("制作进度") < planningPage.indexOf("为什么这样规划"));
 
   const insight = readFileSync(join(frontendSrc, "components/market-analysis-insight.tsx"), "utf8");
   assert.equal(insight.includes("<h2 className=\"mb-2 text-sm font-medium\">数据限制</h2>"), false);

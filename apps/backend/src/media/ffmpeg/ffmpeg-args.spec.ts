@@ -41,6 +41,9 @@ describe('ffmpeg args', () => {
     expect(args).toContain('aac');
     expect(args).toContain('yuv420p');
     expect(args.join(' ')).toContain("subtitles=filename='C\\:/tmp/captions.srt'");
+    expect(args.join(' ')).toContain("force_style='FontSize=10");
+    expect(args.join(' ')).toContain('MarginV=27');
+    expect(args.join(' ')).toContain('Alignment=2');
     expect(args.join(' ')).not.toContain('ffmpeg ');
     expect(args.join(' ')).toContain('force_original_aspect_ratio=increase');
     expect(args.join(' ')).toContain('crop=1080:1920');

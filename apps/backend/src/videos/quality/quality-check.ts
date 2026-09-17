@@ -12,7 +12,6 @@ import {
   OPENING_STATIC_MS,
   QUALITY_RULESET_VERSION,
   SUBTITLE_EST_FONT_PX,
-  SUBTITLE_OVERFLOW_MAX_CHARS,
   SUBTITLE_OVERFLOW_MAX_LINES,
   type ProductionQualityResult,
   type QualityCheckInput,
@@ -236,12 +235,11 @@ export function runDeterministicQualityChecks(input: QualityCheckInput): Product
     if (!cue.text.trim()) {
       issues.push(issue('SUBTITLE_TOO_DENSE', 'SUBTITLE', 'WARNING', 'SUBTITLE', '字幕文本为空', true, 'REBUILD_SUBTITLE'));
     }
-    const chars = semanticCharCount(cue.text);
     const estimatedLines = estimateSubtitleLines(cue.text, input.canvasWidth);
-    if (chars > SUBTITLE_OVERFLOW_MAX_CHARS || estimatedLines > SUBTITLE_OVERFLOW_MAX_LINES) {
+    if (estimatedLines > SUBTITLE_OVERFLOW_MAX_LINES) {
       issues.push(
         issue('SUBTITLE_OVERFLOW_RISK', 'SUBTITLE', 'ERROR', 'SUBTITLE', '字幕可能溢出画面', true, 'REBUILD_SUBTITLE', {
-          chars,
+          chars: semanticCharCount(cue.text),
           estimatedLines,
         }),
       );

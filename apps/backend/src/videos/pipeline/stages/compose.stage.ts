@@ -8,6 +8,7 @@ import type { ComposeProvider } from '../../../media/providers/media-provider.ty
 import { buildStorageKey } from '../../../media/storage/storage-key.js';
 import { reusableAssetIds } from '../asset-reuse.js';
 import { asPipelineOutput, type StageContext } from '../stage-context.js';
+import { metadataString } from '../visual-reuse.js';
 import { UsageMeteringService } from '../../../usage/usage-metering.service.js';
 import { getMeteringScope } from '../../../usage/metering-context.js';
 import { usageIdempotencyKey } from '../../../usage/usage-idempotency.js';
@@ -23,20 +24,31 @@ export class CompositionStage {
 
   async run(
     ctx: StageContext,
-    input: { voiceDuration: number; failToken?: string; force?: boolean },
+    input: {
+      voiceDuration: number;
+      failToken?: string;
+      force?: boolean;
+      resolution?: string;
+      aspectRatio?: string;
+      composeRole?: 'vertical' | 'landscape';
+    },
   ): Promise<{ assetId: string; duration: number; width: number; height: number }> {
+    const composeRole = input.composeRole ?? 'vertical';
     const output = asPipelineOutput(ctx.job.output);
     const reused = input.force ? null : await reusableAssetIds(ctx, output.stages.compose?.assetIds);
-    if (reused?.[0]) {
+    if (reused?.[0] && composeRole === 'vertical') {
       const asset = await ctx.prisma.asset.findFirst({
         where: { id: reused[0], tenantId: ctx.job.tenantId, workspaceId: ctx.job.workspaceId, projectId: ctx.job.projectId },
       });
-      return {
-        assetId: reused[0],
-        duration: asset?.duration ?? output.stages.compose?.duration ?? input.voiceDuration,
-        width: asset?.width ?? 1080,
-        height: asset?.height ?? 1920,
-      };
+      const role = metadataString(asset?.metadata, 'composeRole');
+      if (asset && role !== 'landscape') {
+        return {
+          assetId: reused[0],
+          duration: asset.duration ?? output.stages.compose?.duration ?? input.voiceDuration,
+          width: asset.width ?? 1080,
+          height: asset.height ?? 1920,
+        };
+      }
     }
     if (ctx.failStage === 'compose') {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
@@ -72,6 +84,7 @@ export class CompositionStage {
       projectId: ctx.job.projectId,
       assetId,
     });
+    const landscape = composeRole === 'landscape';
     const t0 = Date.now();
     const rendered = await withUsageMetering(
       this.metering,
@@ -93,6 +106,7 @@ export class CompositionStage {
           ctx.generationVersion,
           getMeteringScope()?.repairAttempt ?? 0,
           input.force ? 'force' : 'auto',
+          composeRole,
         ]),
         metadata: {
           stage: 'COMPOSE',
@@ -111,8 +125,8 @@ export class CompositionStage {
           sceneCount: ctx.plan.scenes.length,
           clientRequestId: `${ctx.job.id}:compose:${ctx.generationVersion}`,
           failToken: input.failToken,
-          resolution: ctx.plan.resolution,
-          aspectRatio: ctx.plan.aspectRatio,
+          resolution: input.resolution ?? ctx.plan.resolution,
+          aspectRatio: input.aspectRatio ?? ctx.plan.aspectRatio,
           fps: ctx.plan.fps,
           scenes: ctx.plan.scenes.map((scene, index) => {
             const visual = visuals[index]!;
@@ -133,8 +147,9 @@ export class CompositionStage {
               kind,
               sourceStartSec: clip?.sourceStartMs != null ? clip.sourceStartMs / 1000 : undefined,
               freezePadSec: clip?.freezePadMs != null ? clip.freezePadMs / 1000 : undefined,
-              cropTopRatio:
-                visual.width && visual.height && visual.width > visual.height
+              cropTopRatio: landscape
+                ? 0
+                : visual.width && visual.height && visual.width > visual.height
                   ? 0.14
                   : visual.type === 'VIDEO' || visual.type === 'SOURCE_VIDEO' || visual.type === 'BROLL'
                     ? 0.14
@@ -169,7 +184,7 @@ export class CompositionStage {
           status: 'READY',
           storageProvider: 'local',
           storageKey: rendered.storageKey,
-          originalFilename: 'output.mp4',
+          originalFilename: landscape ? 'output-landscape.mp4' : 'output.mp4',
           mimeType: rendered.mimeType,
           size: rendered.size,
           duration: rendered.duration,
@@ -188,7 +203,7 @@ export class CompositionStage {
             jobId: ctx.job.id,
             videoId: ctx.plan.videoId,
             stage: 'compose',
-            composeRole: 'draft',
+            composeRole: landscape ? 'landscape' : 'vertical',
             generationVersion: ctx.generationVersion,
             provider: this.compose.id,
             codec: this.compose.id === 'ffmpeg-compose' ? 'h264' : 'mock',

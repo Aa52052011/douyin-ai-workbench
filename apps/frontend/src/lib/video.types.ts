@@ -34,6 +34,17 @@ export type VideoRecord = {
   updatedAt?: string;
   job?: VideoJobRecord | null;
   outputAsset?: VideoAssetRecord | null;
+  landscapeAsset?: VideoAssetRecord | null;
+  finalAcceptance?: VideoFinalAcceptanceRecord | null;
+};
+
+export type VideoFinalAcceptanceRecord = {
+  id: string;
+  current: boolean;
+  acceptedArtifactId: string;
+  variant: string;
+  status: string;
+  acceptedAt?: string;
 };
 
 export type VideoStageView = {

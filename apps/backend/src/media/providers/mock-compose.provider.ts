@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppError, ErrorCode } from '../../common/errors/app-error.js';
 import { MOCK_COMPOSE_FAIL_SENTINEL, MOCK_VIDEO_FAIL_SENTINEL } from '../media.constants.js';
+import { parseResolution } from '../ffmpeg/ffmpeg-config.js';
 import { StorageService } from '../storage/storage.service.js';
 import type { ComposeProvider } from './media-provider.types.js';
 
@@ -18,6 +19,7 @@ export class MockComposeProvider implements ComposeProvider {
     sceneCount: number;
     clientRequestId?: string;
     failToken?: string;
+    resolution?: string;
   }) {
     if (request.failToken === MOCK_COMPOSE_FAIL_SENTINEL || request.failToken === MOCK_VIDEO_FAIL_SENTINEL) {
       throw new AppError(ErrorCode.VIDEO_PROVIDER_FAILED);
@@ -26,12 +28,13 @@ export class MockComposeProvider implements ComposeProvider {
       `mock-compose\n${request.clientRequestId ?? ''}\nscenes=${request.sceneCount}\nvoice=${request.voiceDuration}\n`,
       'utf8',
     );
+    const { width, height } = parseResolution(request.resolution);
     const stored = await this.storage.put(request.storageKey, body, { mimeType: 'video/mp4' });
     return {
       storageKey: stored.key,
       duration: request.voiceDuration,
-      width: 1080,
-      height: 1920,
+      width,
+      height,
       mimeType: 'video/mp4',
       size: stored.size,
     };

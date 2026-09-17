@@ -403,6 +403,18 @@ function run() {
   assert.equal(case8.id, "next-plan");
   assert.equal(case8.label, "创建下一期内容计划");
 
+  const v2cycle = getProjectNextAction(
+    projectId,
+    facts({
+      ...fullLoop(),
+      latestPlanStatus: "CONFIRMED",
+      latestPlanId: "plan-v2",
+      latestPlanTopicCount: 7,
+      completedScriptsOnLatestPlan: 0,
+    }),
+  );
+  assert.equal(v2cycle.id, "next-plan");
+
   void probeReadableInsight;
   void probePublicationMetrics;
 

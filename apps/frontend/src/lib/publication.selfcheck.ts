@@ -6,8 +6,14 @@ import {
   canRetryPublication,
   canSubmitComplete,
   createPublicationBody,
+  defaultPublicationTitle,
   eligiblePublishVideos,
   emptyCompleteForm,
+  findDuplicatePublication,
+  isRegistrationFormVisible,
+  isPublicationSourceBound,
+  publicationCreatedOnDeclarePublished,
+  pendingManualPublishVideos,
   metricsCreateOnPublish,
   mockProviderVisible,
   mountWriteOperations,
@@ -48,10 +54,20 @@ function publication(partial: Partial<PublicationRecord> & Pick<PublicationRecor
 
 function run() {
   const videos = [
-    video({ id: "video-ready", status: "COMPLETED", outputAsset: { contentPath: "/assets/a/content" } }),
+    video({
+      id: "video-ready",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/assets/a/content" },
+      finalAcceptance: { id: "acc-ready", current: true, acceptedArtifactId: "art-a", variant: "VERTICAL", status: "ACCEPTED" },
+    }),
     video({ id: "video-pending", status: "PENDING", outputAsset: { contentPath: "/assets/b/content" } }),
     video({ id: "video-failed", status: "FAILED", outputAsset: { contentPath: "/assets/c/content" } }),
     video({ id: "video-no-asset", status: "COMPLETED" }),
+    video({
+      id: "video-completed-unaccepted",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/assets/d/content" },
+    }),
   ];
 
   // 1 + 2 eligible Video COMPLETED + output asset
@@ -59,10 +75,60 @@ function run() {
     eligiblePublishVideos(videos).map((item) => item.id),
     ["video-ready"],
   );
+  assert.equal(eligiblePublishVideos(videos).some((item) => item.status !== "COMPLETED"), false);
+  assert.equal(eligiblePublishVideos(videos).some((item) => item.id === "video-completed-unaccepted"), false);
+
+  const sixCompleted = [
+    video({ id: "v1", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+    video({ id: "v2", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+    video({ id: "v3", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+    video({ id: "v4", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+    video({ id: "v5", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+    video({
+      id: "v6",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/a" },
+      finalAcceptance: { id: "acc6", current: true, acceptedArtifactId: "art6", variant: "VERTICAL", status: "ACCEPTED" },
+    }),
+  ];
+  assert.deepEqual(eligiblePublishVideos(sixCompleted).map((item) => item.id), ["v6"]);
+
+  const newerUnaccepted = [
+    video({
+      id: "old-accepted",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/a" },
+      finalAcceptance: { id: "acc-old", current: true, acceptedArtifactId: "art-old", variant: "VERTICAL", status: "ACCEPTED" },
+    }),
+    video({ id: "new-completed", status: "COMPLETED", outputAsset: { contentPath: "/a" } }),
+  ];
+  assert.deepEqual(eligiblePublishVideos(newerUnaccepted).map((item) => item.id), ["old-accepted"]);
+
+  const superseded = [
+    video({
+      id: "old-accepted",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/a" },
+      finalAcceptance: { id: "acc-old", current: false, acceptedArtifactId: "art-old", variant: "VERTICAL", status: "ACCEPTED" },
+    }),
+    video({
+      id: "new-accepted",
+      status: "COMPLETED",
+      outputAsset: { contentPath: "/a" },
+      finalAcceptance: { id: "acc-new", current: true, acceptedArtifactId: "art-new", variant: "VERTICAL", status: "ACCEPTED" },
+    }),
+  ];
+  assert.deepEqual(eligiblePublishVideos(superseded).map((item) => item.id), ["new-accepted"]);
+
+  const acceptedOnly = eligiblePublishVideos(sixCompleted);
+  assert.equal(acceptedOnly.length, 1);
+  assert.equal(pendingManualPublishVideos(sixCompleted, []).length, 1);
   assert.equal(
-    eligiblePublishVideos(videos).some((item) => item.status !== "COMPLETED"),
-    false,
+    pendingManualPublishVideos(sixCompleted, [publication({ id: "pub-1", status: "PENDING", videoId: "v6" })]).length,
+    0,
   );
+  assert.equal(acceptedOnly[0]?.id, "v6");
+  assert.equal(metricsCreateOnPublish(), false);
 
   // 3 valid videoId query preselect
   const validQuery = resolvePublishVideoQuery("video-ready", eligiblePublishVideos(videos));
@@ -105,10 +171,29 @@ function run() {
   // 9 external URL validation
   assert.equal(validateExternalUrl(""), null);
   assert.equal(validateExternalUrl("https://www.douyin.com/video/1"), null);
+  assert.equal(validateExternalUrl("https://v.douyin.com/QwZ6GP7OFUU/"), null);
   assert.equal(validateExternalUrl("not-a-url"), "请填写有效的作品链接。");
   assert.equal(validateExternalUrl("javascript:alert(1)"), "请填写有效的作品链接。");
   assert.equal(canSubmitComplete({ externalUrl: "https://www.douyin.com/video/1", externalPostId: "" }), true);
+  assert.equal(canSubmitComplete({ externalUrl: "https://v.douyin.com/QwZ6GP7OFUU/", externalPostId: "" }), true);
+  assert.equal(canSubmitComplete({ externalUrl: "not-a-url", externalPostId: "" }), false);
   assert.equal(canSubmitComplete(emptyCompleteForm()), false);
+  assert.equal(isRegistrationFormVisible(false, true), false);
+  assert.equal(isRegistrationFormVisible(true, true), true);
+  assert.equal(isPublicationSourceBound({ videoId: null }), false);
+  assert.equal(isPublicationSourceBound({}), false);
+  assert.equal(isPublicationSourceBound({ videoId: "cb66555a-7170-4948-8d70-67809e966a38" }), true);
+  assert.equal(publicationCreatedOnDeclarePublished(), false);
+  assert.equal(defaultPublicationTitle(videos[0]!), "30秒沟通清单脚本");
+  assert.equal(
+    findDuplicatePublication(
+      [publication({ id: "dup", status: "PUBLISHED", videoId: "video-ready", externalUrl: "https://v.douyin.com/QwZ6GP7OFUU/" })],
+      "video-ready",
+      { externalUrl: "https://v.douyin.com/QwZ6GP7OFUU/", externalPostId: "" },
+    )?.id,
+    "dup",
+  );
+  assert.equal(eligiblePublishVideos(videos).every((item) => item.finalAcceptance?.current === true), true);
 
   // 10 PUBLISHED metrics handoff
   assert.equal(
