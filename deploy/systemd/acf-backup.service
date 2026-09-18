@@ -1,0 +1,21 @@
+[Unit]
+Description=AI Content Factory daily backup (postgres + media)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=acf
+Group=acf
+EnvironmentFile=/opt/ai-content-factory/shared/.env.production
+Environment=ACF_ENV_FILE=/opt/ai-content-factory/shared/.env.production
+WorkingDirectory=/opt/ai-content-factory/current
+ExecStart=/opt/ai-content-factory/current/deploy/scripts/backup-all.sh
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/ai-content-factory/shared/backups /opt/ai-content-factory/shared/media
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acf-backup

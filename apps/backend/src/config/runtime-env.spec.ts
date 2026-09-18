@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+﻿import { afterEach, describe, expect, it } from 'vitest';
 import { resolveModelProviderId } from '../agents/models/model.config.js';
 import { MockModelProvider } from '../agents/models/mock.provider.js';
 import { ModelRouter } from '../agents/models/model.router.js';
@@ -18,6 +18,7 @@ function productionBase(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     JWT_ACCESS_SECRET: 'prod-jwt-secret',
     DATABASE_URL: DB,
     CORS_ORIGIN: 'https://app.example.com',
+    COOKIE_SECURE: 'true',
     REDIS_URL: 'redis://127.0.0.1:6379',
     MEDIA_STORAGE_ROOT: './storage',
     MODEL_PROVIDER: 'real',
@@ -229,6 +230,23 @@ describe('runtime environment policy', () => {
     expectRejected(productionBase({ CORS_ORIGIN: '' }), 'CORS_ORIGIN is required');
   });
 
+  it('accepts CORS_ORIGINS in production when CORS_ORIGIN is empty', () => {
+    expect(boot(productionBase({ CORS_ORIGIN: '', CORS_ORIGINS: 'https://app.example.com' })).listened).toBe(true);
+  });
+
+  it('rejects CORS wildcard in production', () => {
+    expectRejected(productionBase({ CORS_ORIGIN: '*' }), 'CORS wildcard is not allowed');
+  });
+
+  it('rejects insecure cookies in production', () => {
+    expectRejected(productionBase({ COOKIE_SECURE: 'false' }), 'COOKIE_SECURE must be true in production');
+    expectRejected(productionBase({ COOKIE_SECURE: '' }), 'COOKIE_SECURE must be true in production');
+  });
+
+  it('rejects broad TRUST_PROXY in production', () => {
+    expectRejected(productionBase({ TRUST_PROXY: 'true' }), 'TRUST_PROXY broad trust is not allowed');
+  });
+
   it('rejects missing Redis in production for api and worker', () => {
     const env = productionBase({ REDIS_URL: '' });
     expectRejected(env, 'REDIS_URL is required');
@@ -240,6 +258,8 @@ describe('runtime environment policy', () => {
     const env = productionBase();
     delete env.DOUYIN_CLIENT_KEY;
     delete env.DOUYIN_CLIENT_SECRET;
+    delete env.DOUYIN_REDIRECT_URI;
+    delete env.PLATFORM_SECRET_MASTER_KEY;
     delete env.AI_ENGINE_URL;
     expect(boot(env).listened).toBe(true);
   });

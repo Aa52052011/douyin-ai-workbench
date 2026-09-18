@@ -4,6 +4,7 @@ import { resolveComposeProviderId } from '../media/ffmpeg/ffmpeg-config.js';
 import { resolveTtsProviderId, TTS_PROVIDER_MINIMAX, TTS_PROVIDER_OPENAI } from '../media/tts/tts-config.js';
 import { IMAGE_PROVIDER_WANX, resolveImageProviderId } from '../media/visual/visual-config.js';
 import { RuntimeConfigError } from './runtime-config-error.js';
+import { isBroadTrustProxyValue } from './trust-proxy.js';
 
 export { CONFIG_INVALID, RuntimeConfigError, formatRuntimeConfigError } from './runtime-config-error.js';
 
@@ -75,8 +76,11 @@ export function validateRuntimeEnvironment(options?: {
     if (!present(env, 'DATABASE_URL')) {
       issues.push('DATABASE_URL is required');
     }
-    if (!present(env, 'CORS_ORIGIN')) {
+    const corsRaw = (env.CORS_ORIGINS ?? env.CORS_ORIGIN ?? '').trim();
+    if (!corsRaw) {
       issues.push('CORS_ORIGIN is required');
+    } else if (corsRaw.split(',').map((item) => item.trim()).includes('*')) {
+      issues.push('CORS wildcard is not allowed');
     }
     if (!present(env, 'REDIS_URL')) {
       issues.push('REDIS_URL is required');
@@ -85,8 +89,12 @@ export function validateRuntimeEnvironment(options?: {
       issues.push('MEDIA_STORAGE_ROOT is required');
     }
     if (env.COOKIE_SECURE !== 'true') {
-      warnings.push('COOKIE_SECURE is not true; set COOKIE_SECURE=true for HTTPS deployments');
+      issues.push('COOKIE_SECURE must be true in production');
     }
+  }
+
+  if (isBroadTrustProxyValue(env.TRUST_PROXY)) {
+    issues.push('TRUST_PROXY broad trust is not allowed');
   }
 
   try {

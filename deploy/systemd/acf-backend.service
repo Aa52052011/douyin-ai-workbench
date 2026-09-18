@@ -1,0 +1,33 @@
+[Unit]
+Description=AI Content Factory backend (Nest)
+Documentation=file:///opt/ai-content-factory/current/docs/commercial-launch/phase-ii-a3-runtime-systemd-runbook.md
+After=network-online.target
+Wants=network-online.target
+# Distro unit names differ (postgresql vs postgresql@16-main, redis vs redis-server).
+# Do not Requires= those names. App start fails fast if DB/Redis are down; Restart=on-failure retries.
+
+[Service]
+Type=simple
+User=acf
+Group=acf
+WorkingDirectory=/opt/ai-content-factory/current/apps/backend
+EnvironmentFile=/opt/ai-content-factory/shared/.env.production
+Environment=NODE_ENV=production
+Environment=BACKEND_HOST=127.0.0.1
+Environment=BACKEND_PORT=3001
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=200
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acf-backend
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/ai-content-factory/shared /opt/ai-content-factory/shared/media /tmp
+
+[Install]
+WantedBy=multi-user.target

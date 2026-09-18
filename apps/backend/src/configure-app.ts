@@ -1,8 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppExceptionFilter } from './common/filters/app-exception.filter.js';
+import { resolveCorsOrigins } from './config/cors-origin.js';
+import { applyTrustProxy } from './config/trust-proxy.js';
 
 export function configureApp(app: INestApplication): void {
+  applyTrustProxy(app.getHttpAdapter().getInstance() as { set: (key: string, value: unknown) => unknown });
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
@@ -13,10 +16,7 @@ export function configureApp(app: INestApplication): void {
   );
   app.useGlobalFilters(new AppExceptionFilter());
   app.enableCors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? process.env.CORS_ORIGIN
-        : (process.env.CORS_ORIGIN ?? 'http://localhost:3000'),
+    origin: resolveCorsOrigins(),
     credentials: true,
   });
 }

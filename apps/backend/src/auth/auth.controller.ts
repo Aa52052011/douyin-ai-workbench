@@ -9,6 +9,7 @@ import { RefreshDto } from './dto/refresh.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { clearRefreshCookie, readRefreshToken, setRefreshCookie } from './refresh-cookie.js';
+import { resolveClientIp } from '../config/trust-proxy.js';
 
 @Controller('auth')
 export class AuthController {
@@ -30,7 +31,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const session = await this.auth.login(dto, { ip: clientIp(req) });
+    const session = await this.auth.login(dto, { ip: resolveClientIp(req) });
     return this.finishSession(session, req, res);
   }
 
@@ -86,12 +87,4 @@ export class AuthController {
 function sanitizeSession(session: AuthSession & { refreshRaw?: string }) {
   const { refreshRaw: _refreshRaw, ...safe } = session;
   return safe;
-}
-
-function clientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0]!.trim();
-  }
-  return req.ip ?? '0.0.0.0';
 }

@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { RuntimeConfigError } from './config/runtime-config-error.js';
 import { validateRuntimeEnvironment } from './config/runtime-env.js';
 import { JobWorker } from './jobs/job.worker.js';
+import { WorkerInstanceLockHeldError } from './jobs/worker-instance-lock.js';
 import { WorkerAppModule } from './jobs/worker.module.js';
 import { assertRedisReachable } from './jobs/queue/redis-config.js';
 
@@ -22,11 +23,15 @@ async function bootstrapWorker(): Promise<void> {
     await app.get(PrismaClient).$connect();
     await assertRedisReachable();
   }
+
   const worker = app.get(JobWorker);
-  await worker.start();
-  logger.log('Job worker started');
+  let shuttingDown = false;
 
   const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
     await worker.close();
     const prisma = app.get(PrismaClient);
     await app.close();
@@ -39,11 +44,28 @@ async function bootstrapWorker(): Promise<void> {
   process.once('SIGINT', () => {
     void shutdown();
   });
+
+  try {
+    await worker.start();
+  } catch (error) {
+    try {
+      await shutdown();
+    } catch {
+      // Preserve the original startup error (e.g. lock held).
+    }
+    throw error;
+  }
+
+  logger.log('Job worker started');
 }
 
 try {
   await bootstrapWorker();
 } catch (error) {
-  console.error(error instanceof RuntimeConfigError ? error.message : 'Worker startup failed');
-  process.exitCode = 1;
+  if (error instanceof WorkerInstanceLockHeldError) {
+    console.error('Worker instance lock already held');
+  } else {
+    console.error(error instanceof RuntimeConfigError ? error.message : 'Worker startup failed');
+  }
+  process.exit(1);
 }
